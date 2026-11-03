@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>요리조리 프로토타입 (연동 앱 + 글라스 HUD)</title>
+<style>
+  :root { --mint:#7FD8BC; --ink:#F6F3EC; --soft:#C8D3CC; --panel:rgba(24,30,28,0.78); --line:rgba(170,200,190,0.75);
+          --cream:#FFFDF9; --dark:#4A302B; --muted:#876E64; --red:#D4543D; --peach:#FFE5D7; --border:#E9CBB8; --yel:#FFF0B8; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:#000; color:var(--ink);
+    font-family:-apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif; overflow:hidden; }
+  button { font-family:inherit; }
+
+  /* ---------- 연동 앱 ---------- */
+  #app { position:fixed; inset:0; background:var(--cream); color:var(--dark); display:flex; flex-direction:column; z-index:4; }
+  #appHead { padding:calc(env(safe-area-inset-top) + 14px) 18px 8px; display:flex; align-items:center; justify-content:space-between; }
+  #appHead h1 { margin:0; font-size:22px; }
+  #appHead .brand { color:var(--red); font-size:13px; font-weight:800; letter-spacing:1px; }
+  #appBody { flex:1; overflow:auto; padding:4px 16px 16px; }
+  .sub { color:var(--muted); font-size:13px; margin:0 0 12px; }
+  .card { background:#fff; border:1px solid var(--border); border-radius:18px; padding:14px 16px; margin-bottom:10px; }
+  .card.peach { background:var(--peach); }
+  .card.sel { border:2px solid var(--red); }
+  .card h3 { margin:0 0 4px; font-size:17px; }
+  .card p { margin:0; color:var(--muted); font-size:13px; line-height:1.5; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; border-radius:999px; padding:2px 8px; margin-right:4px; background:var(--yel); color:var(--dark); }
+  .tag.ok { background:#DDF2EA; color:#24624F; }
+  .tag.need { background:#FBE3D6; color:#9A3A18; }
+  .btn { width:100%; border:0; border-radius:999px; padding:14px; font-size:16px; font-weight:800; background:var(--red); color:#fff; }
+  .btn.ghost { background:#fff; color:var(--dark); border:1px solid var(--border); font-weight:700; }
+  .btn:disabled { opacity:.45; }
+  .row { display:flex; gap:8px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .chip2 { background:#fff; border:1px solid var(--border); border-radius:999px; padding:6px 10px; font-size:14px; display:inline-flex; gap:6px; align-items:center; }
+  .chip2 small { color:var(--muted); font-size:11px; }
+  .chip2 b { cursor:pointer; color:var(--muted); font-weight:400; }
+  #app input[type=text], #app textarea, #app select { width:100%; border:1px solid var(--border); border-radius:12px; padding:10px 12px; font-size:15px; background:#fff; color:var(--dark); font-family:inherit; }
+  #app textarea { min-height:110px; }
+  #appTabs { display:flex; border-top:1px solid var(--border); background:#fff; padding-bottom:env(safe-area-inset-bottom); }
+  #appTabs button { flex:1; background:none; border:0; padding:10px 0 12px; font-size:12px; color:var(--muted); display:flex; flex-direction:column; align-items:center; gap:2px; }
+  #appTabs button span { font-size:20px; }
+  #appTabs button.on { color:var(--red); font-weight:800; }
+  .note { font-size:12px; color:var(--muted); line-height:1.5; margin-top:8px; }
+  .qa { background:var(--yel); border-radius:12px; padding:10px 12px; font-size:13px; margin-top:8px; line-height:1.5; }
+  #sendOverlay { position:fixed; inset:0; background:rgba(20,24,22,.92); color:var(--ink); z-index:20; display:none; align-items:center; justify-content:center; flex-direction:column; gap:10px; font-size:18px; }
+
+  /* ---------- 글라스 HUD ---------- */
+  #bg { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; display:none; }
+  #hud { position:fixed; inset:0; padding:calc(env(safe-area-inset-top) + 16px) 18px calc(env(safe-area-inset-bottom) + 16px); pointer-events:none; }
+  .chip { display:inline-flex; align-items:center; gap:8px; background:var(--panel); border:1.5px solid var(--line);
+    border-radius:999px; padding:8px 16px; font-size:16px; backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); }
+  #status { position:absolute; left:18px; top:calc(env(safe-area-inset-top) + 16px); }
+  #status .dot { width:9px; height:9px; border-radius:50%; background:#5E6862; }
+  #status.listen .dot { background:var(--mint); }
+  #status.think .dot { background:#F2C46D; }
+  #status.cam .dot { background:#FF5A4E; }
+  #timers { position:absolute; right:18px; top:calc(env(safe-area-inset-top) + 16px); display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
+  .timer { flex-direction:column; align-items:flex-start; gap:0; border-radius:16px; padding:8px 16px; min-width:120px; }
+  .timer small { color:var(--mint); font-size:13px; font-weight:700; }
+  .timer b { font-size:28px; font-variant-numeric:tabular-nums; }
+  .timer.done { border-color:#F2A07F; }
+  #card { position:absolute; left:50%; top:22%; transform:translate(-50%, 10px); width:min(560px, 88vw);
+    background:var(--panel); border:1.5px solid var(--line); border-radius:22px; padding:20px 24px;
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); opacity:0; transition:opacity .35s, transform .35s; }
+  #card.show { opacity:1; transform:translate(-50%, 0); }
+  #card.pinned { left:auto; right:18px; top:calc(env(safe-area-inset-top) + 120px); transform:none; width:min(300px, 72vw); padding:14px 18px; }
+  #card.pinned #cardTitle { font-size:20px; }
+  #card.pinned #cardLines { font-size:15px; }
+  #cardLabel { color:var(--mint); font-size:15px; font-weight:700; margin-bottom:6px; }
+  #cardTitle { font-size:30px; font-weight:800; line-height:1.25; margin-bottom:8px; }
+  #cardLines { font-size:19px; line-height:1.55; color:#E9EEEA; }
+  #cardLines div.done { color:var(--mint); }
+  #cardLines div.next { color:#C8ECDE; margin-top:6px; }
+  #cardPin { display:none; color:var(--mint); font-size:13px; margin-top:8px; }
+  #card.pinned #cardPin { display:block; }
+  #say { position:absolute; left:50%; bottom:calc(env(safe-area-inset-bottom) + 84px); transform:translateX(-50%);
+    width:min(620px, 92vw); text-align:center; font-size:18px; line-height:1.5; color:#fff; text-shadow:0 1px 6px #000; opacity:0; transition:opacity .3s; }
+  #say.show { opacity:1; }
+  #heard { position:absolute; left:50%; bottom:calc(env(safe-area-inset-bottom) + 54px); transform:translateX(-50%);
+    font-size:15px; color:var(--soft); opacity:.85; white-space:nowrap; max-width:92vw; overflow:hidden; text-overflow:ellipsis; }
+  #controls { position:fixed; left:0; right:0; bottom:0; padding:0 12px calc(env(safe-area-inset-bottom) + 10px);
+    display:flex; gap:8px; align-items:center; transition:opacity .3s; }
+  #controls.dim { opacity:.18; }
+  #controls input { flex:1; min-width:0; background:rgba(30,35,33,.9); color:var(--ink); border:1px solid #3A423D; border-radius:12px; padding:10px 12px; font-size:15px; }
+  #controls button { background:#2C332F; color:var(--ink); border:1px solid #4A544E; border-radius:12px; padding:10px 12px; font-size:15px; }
+
+  /* ---------- 설정 ---------- */
+  #settings { position:fixed; inset:0; background:var(--cream); color:var(--dark); z-index:10; overflow:auto; padding:calc(env(safe-area-inset-top) + 20px) 18px 40px; display:none; }
+  #settings label { display:block; margin:16px 0 6px; color:var(--muted); font-size:14px; }
+  #settings input, #settings select { width:100%; background:#fff; color:var(--dark); border:1px solid var(--border); border-radius:10px; padding:10px; font-size:15px; }
+  #settings h2 { margin:0 0 4px; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<!-- ================= 연동 앱 ================= -->
+<div id="app">
+  <div id="appHead"><div><div class="brand">요리조리</div><h1 id="appTitle">오늘 뭐 먹지?</h1></div><button class="btn ghost" style="width:auto;padding:8px 12px" id="appSet">⚙</button></div>
+  <div id="appBody"></div>
+  <div id="appTabs">
+    <button data-tab="home" class="on"><span>🍳</span>오늘 뭐 먹지</button>
+    <button data-tab="recipes"><span>📒</span>보관함</button>
+    <button data-tab="fridge"><span>🧊</span>냉장고</button>
+    <button data-tab="records"><span>📝</span>기록</button>
+  </div>
+</div>
+<div id="sendOverlay"><div style="font-size:40px">🕶</div><div id="sendText">글라스로 보내는 중…</div></div>
+
+<!-- ================= 글라스 HUD ================= -->
+<video id="bg" playsinline muted autoplay></video>
+<div id="hud">
+  <div id="status" class="chip"><span class="dot"></span><span id="statusText">대기</span></div>
+  <div id="timers"></div>
+  <div id="card"><div id="cardLabel"></div><div id="cardTitle"></div><div id="cardLines"></div><div id="cardPin">고정됨 · “숨겨” 하면 사라져요</div></div>
+  <div id="say"></div>
+  <div id="heard"></div>
+</div>
+<div id="controls">
+  <button id="backApp" title="연동 앱으로">📱</button>
+  <button id="micBtn" title="듣기 켜기/끄기">🎙</button>
+  <button id="camBtn" title="보여주고 묻기">📷</button>
+  <input id="textIn" placeholder="말 대신 입력 (예: 다음, 매실액 없는데?)" enterkeyhint="send">
+</div>
+<input id="filePick" type="file" accept="image/*" capture="environment" class="hidden">
+<input id="mediaPick" type="file" accept="image/*,audio/*" class="hidden">
+
+<!-- ================= 설정 ================= -->
+<div id="settings">
+  <h2>설정</h2>
+  <label>Gemini API 키</label>
+  <input id="keyIn" type="password" placeholder="AI Studio에서 발급한 키" autocomplete="off">
+  <div class="note">키는 이 브라우저에만 저장돼요. 링크를 공유해도 키는 같이 가지 않아요.</div>
+  <label>모델</label>
+  <input id="modelIn" placeholder="gemini-3.1-flash-lite">
+  <label>글라스 배경</label>
+  <select id="bgIn"><option value="black">검정 (영상 합성용)</option><option value="camera">카메라 화면 (글라스 시야처럼)</option></select>
+  <label>음성 답변 (TTS)</label>
+  <select id="ttsIn"><option value="on">켜기</option><option value="off">끄기</option></select>
+  <div class="row" style="margin-top:24px"><button class="btn" id="saveBtn">저장하고 닫기</button></div>
+  <div class="row" style="margin-top:10px"><button class="btn ghost" id="resetBtn">시연용 초기 상태로 되돌리기</button></div>
+  <div class="note" style="margin-top:16px">글라스 음성 명령: “다음”, “이전”, “레시피 보여줘”, “양념장 띄워 둬”, “숨겨”, “고추장 넣었어”, “3분 타이머”, “몇 분 남았어?”, “완성”. 그 밖의 말은 AI가 지금 단계를 알고 답하고, “이거”, “이 정도”, “냉장고”가 들어가면 카메라 한 장을 같이 보내요.</div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const clone = o => JSON.parse(JSON.stringify(o));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('yrjr2_' + k); return v === null ? clone(d) : JSON.parse(v); } catch (e) { return clone(d); } },
+  set(k, v) { try { localStorage.setItem('yrjr2_' + k, JSON.stringify(v)); } catch (e) {} }
+};
+
+// ================= 시연용 기본 데이터 (검수 전) =================
+const PANTRY = ['고추장', '고춧가루', '다진 마늘', '간장', '설탕', '식용유', '참기름', '통깨', '후추', '소금'];
+const DEFAULT_RECIPES = [
+  { id: 'jeyuk', name: '엄마표 제육볶음', source: '엄마 메모', servings: '1인분',
+    ingredients: ['돼지고기', '양파', '대파', '청양고추', '고추장', '고춧가루', '다진 마늘', '매실액', '간장'],
+    steps: [
+      { title: '재료 손질', lines: ['대파·청양고추 어슷썰기', '양파 1cm 두께로 썰기', '돼지고기 한입 크기로 썰기'],
+        say: '재료 손질부터 시작할게요. 대파와 청양고추는 어슷하게, 양파는 1센티 두께로, 고기는 한입 크기로 썰어 주세요.', safety: true },
+      { title: '양념장 만들기', lines: ['고추장 3큰술', '고춧가루 2큰술', '다진 마늘 1큰술', '매실액 2큰술', '간장 1큰술', '통깨·후추 약간'],
+        say: '다음은 양념장이에요. 양념이 많으니 오른쪽에 띄워 둘게요. 넣은 건 말해 주시면 체크할게요.', pinList: true },
+      { title: '버무리고 숙성', lines: ['양념장을 고기에 버무리기', '냉장고에서 30분 숙성 (선택)'],
+        say: '양념장을 고기에 버무려 주세요. 냉장고에 30분 두면 양념이 배어 더 맛있어요. 30분 타이머 맞출까요?', offer: { seconds: 1800, label: '숙성' } },
+      { title: '파기름 내기', lines: ['팬에 식용유 2큰술 + 대파', '향이 올라올 때까지 볶기'], say: '팬에 식용유 2큰술과 대파를 넣고 파기름을 내 주세요.' },
+      { title: '고기 볶기', lines: ['양념한 고기 넣기', '중불로 약 8분, 완전히 익히기'],
+        say: '양념한 고기를 넣고 중불로 볶아 완전히 익혀 주세요. 8분 정도 걸려요. 8분 타이머 맞출까요?', offer: { seconds: 480, label: '고기' } },
+      { title: '채소 넣기', lines: ['양파·청양고추 넣기', '강불로 2분 볶고 불 끄기'],
+        say: '양파와 청양고추를 넣고 강불로 2분 볶은 뒤 불을 꺼 주세요.', offer: { seconds: 120, label: '채소' } },
+      { title: '마무리', lines: ['참기름 약간 넣어 섞기', '접시에 담고 통깨 뿌리기'], say: '불을 끄고 참기름과 통깨로 마무리해 주세요.' }
+    ] },
+  { id: 'kimchi', name: '김치찌개', source: '릴스 저장', servings: '1인분',
+    ingredients: ['김치', '돼지고기', '두부', '대파', '고춧가루'],
+    steps: [
+      { title: '재료 준비', lines: ['김치 한 줌 썰기', '돼지고기 한입 크기', '두부·대파 썰기'], say: '김치와 고기, 두부와 대파를 먼저 썰어 주세요.', safety: true },
+      { title: '볶기', lines: ['냄비에 고기·김치 넣고 중불 3분'], say: '냄비에 고기와 김치를 넣고 중불로 3분 볶아 주세요.', offer: { seconds: 180, label: '볶기' } },
+      { title: '끓이기', lines: ['물 2컵, 고춧가루 1큰술', '끓으면 두부 넣고 5분'], say: '물 2컵과 고춧가루를 넣고, 끓으면 두부를 넣어 5분 더 끓여 주세요.', offer: { seconds: 300, label: '찌개' } },
+      { title: '마무리', lines: ['대파 넣고 불 끄기'], say: '대파를 넣고 불을 꺼 주세요.' }
+    ] }
+];
+const DEFAULT_FRIDGE = [
+  { name: '돼지고기', from: '글라스' }, { name: '양파', from: '글라스' }, { name: '대파', from: '글라스' }, { name: '청양고추', from: '글라스' },
+  { name: '김치', from: '직접' }, { name: '고추장', from: '직접' }, { name: '고춧가루', from: '직접' }, { name: '다진 마늘', from: '영수증' }, { name: '간장', from: '영수증' }, { name: '설탕', from: '직접' }
+];
+const SUBSTITUTES = [
+  '매실액 → 설탕 1큰술 (매실액 2큰술 기준, 단맛이 강하니 적게 시작)',
+  '진간장 → 국간장 반 양부터 (더 짜므로 맛보며 추가)',
+  '올리고당 ↔ 설탕 (올리고당 2큰술 ≈ 설탕 1큰술)',
+  '두부 → 생략 가능', '청양고추 → 생략 가능 (덜 맵게)'
+];
+
+// ================= 상태 =================
+const D = { recipes: store.get('recipes', DEFAULT_RECIPES), fridge: store.get('fridge', DEFAULT_FRIDGE),
+  history: store.get('history', []), memory: store.get('memory', []), selected: store.get('selected', 'jeyuk') };
+function saveD() { store.set('recipes', D.recipes); store.set('fridge', D.fridge); store.set('history', D.history); store.set('memory', D.memory); store.set('selected', D.selected); }
+const S = { recipe: clone(D.recipes[0]), step: -1, subs: [], checked: {}, timers: [], pendingOffer: null, history: [],
+  listening: false, speaking: false, stream: null, after: null, started: false };
+
+// ================= 연동 앱 화면 =================
+let tab = 'home', pendingImport = null;
+const has = n => D.fridge.some(f => f.name === n || n.includes(f.name) || f.name.includes(n));
+function missing(r) { return (r.ingredients || []).filter(i => !has(i)); }
+function memFor(r) { return D.memory.filter(m => r.name.includes(m.recipe) || (m.recipe && m.recipe.includes(r.name.replace('엄마표 ', '')))); }
+function render() {
+  document.querySelectorAll('#appTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  const B = $('appBody');
+  if (tab === 'home') {
+    $('appTitle').textContent = '오늘 뭐 먹지?';
+    const list = D.recipes.map(r => ({ r, miss: missing(r) })).sort((a, b) => a.miss.length - b.miss.length);
+    B.innerHTML = `<p class="sub">냉장고 재고 ${D.fridge.length}개 + 저장한 레시피 ${D.recipes.length}개 기준</p>` +
+      list.map(({ r, miss }) => {
+        const mem = memFor(r);
+        const status = !miss.length ? '<span class="tag ok">바로 가능</span>' :
+          miss.every(m => SUBSTITUTES.some(s => s.startsWith(m))) ? `<span class="tag ok">대체로 가능</span><span class="tag need">${esc(miss.join(', '))} 없음</span>` :
+          `<span class="tag need">${esc(miss.join(', '))}만 사면</span>`;
+        return `<div class="card ${r.id === D.selected ? 'sel peach' : ''}" data-pick="${esc(r.id)}">
+          <h3>${esc(r.name)}</h3><p>${status}<span class="tag">${esc(r.source || '내 레시피')}</span></p>
+          ${mem.length ? `<p style="margin-top:6px">지난번 기록: ${esc(mem.map(m => m.note).join(' · '))} → 반영해서 안내</p>` : ''}</div>`;
+      }).join('') +
+      `<button class="btn" id="sendBtn">🕶 글라스로 보내기</button><p class="note">보내면 글라스에 첫 단계 카드가 떠요. 카메라는 질문할 때만 한 장 써요.</p>`;
+    B.querySelectorAll('[data-pick]').forEach(el => el.onclick = () => { D.selected = el.dataset.pick; saveD(); render(); });
+    $('sendBtn').onclick = sendToGlass;
+  } else if (tab === 'recipes') {
+    $('appTitle').textContent = '레시피 보관함';
+    B.innerHTML = `<p class="sub">릴스·유튜브 설명, 글·사진, 엄마 음성 메모를 같은 카드로</p>
+      <div class="card"><h3>새 레시피 등록</h3>
+        <select id="srcIn" style="margin:8px 0"><option>엄마 메모</option><option>직접 입력</option><option>릴스·유튜브 설명</option></select>
+        <textarea id="recipeIn" placeholder="예) 엄마: 고기에 고추장 세 숟갈, 간장 대충 한 숟갈 넣고 버무려…"></textarea>
+        <div class="row" style="margin-top:8px"><button class="btn ghost" id="mediaBtn">🎙/📷 녹음·사진 첨부</button><button class="btn" id="importBtn">AI로 정리</button></div>
+        <div class="note" id="importMsg"></div><div id="importOut"></div></div>` +
+      D.recipes.map(r => `<div class="card"><h3>${esc(r.name)}</h3><p><span class="tag">${esc(r.source || '')}</span>${r.steps.length}단계 · 재료 ${(r.ingredients || []).length}개</p>
+        <p style="margin-top:6px">${esc(r.steps.map(s => s.title).join(' → '))}</p></div>`).join('');
+    $('importBtn').onclick = importRecipe;
+    $('mediaBtn').onclick = () => { $('mediaPick').value = ''; $('mediaPick').click(); };
+  } else if (tab === 'fridge') {
+    $('appTitle').textContent = '냉장고';
+    B.innerHTML = `<p class="sub">글라스로 본 재료 · 영수증 · 직접 입력이 모여요. 요리하면 쓴 재료는 자동으로 빠져요.</p>
+      <div class="chips">${D.fridge.map((f, i) => `<span class="chip2">${esc(f.name)} <small>${esc(f.from)}</small><b data-del="${i}">×</b></span>`).join('') || '<span class="sub">비어 있어요</span>'}</div>
+      <div class="row"><input type="text" id="addIn" placeholder="재료 추가 (예: 두부)"><button class="btn" style="width:auto;padding:10px 16px" id="addBtn">추가</button></div>
+      <div class="row" style="margin-top:8px"><button class="btn ghost" id="scanBtn">📷 사진·영수증으로 추가</button></div><div class="note" id="scanMsg"></div>`;
+    B.querySelectorAll('[data-del]').forEach(el => el.onclick = () => { D.fridge.splice(+el.dataset.del, 1); saveD(); render(); });
+    $('addBtn').onclick = () => { const v = $('addIn').value.trim(); if (v) { D.fridge.push({ name: v, from: '직접' }); saveD(); render(); } };
+    $('scanBtn').onclick = scanFridgePhoto;
+  } else {
+    $('appTitle').textContent = '조리 기록 · 내 입맛';
+    B.innerHTML = `<p class="sub">기억한 입맛은 다음 안내에 반영돼요. 언제든 지울 수 있어요.</p>
+      <div class="card peach"><h3>내 입맛</h3>${D.memory.length ? D.memory.map((m, i) => `<p>· ${esc(m.recipe ? m.recipe + ': ' : '')}${esc(m.note)} <b data-mdel="${i}" style="cursor:pointer">×</b></p>`).join('') : '<p>아직 없어요. 요리 후 “다음엔 덜 달게”처럼 말해 보세요.</p>'}</div>` +
+      (D.history.length ? D.history.slice().reverse().map(h => `<div class="card"><h3>${esc(h.name)}</h3><p>${esc(h.date)} · ${h.subs.length ? '대체: ' + esc(h.subs.join(', ')) : '대체 없음'}</p>${h.used.length ? `<p>쓴 재료: ${esc(h.used.join(', '))}</p>` : ''}</div>`).join('') : '<p class="sub">아직 조리 기록이 없어요.</p>');
+    B.querySelectorAll('[data-mdel]').forEach(el => el.onclick = () => { D.memory.splice(+el.dataset.mdel, 1); saveD(); render(); });
+  }
+}
+document.querySelectorAll('#appTabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
+
+// 미디어(녹음·사진) 첨부 → 레시피 정리
+let mediaData = null;
+$('mediaPick').addEventListener('change', () => {
+  const f = $('mediaPick').files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { mediaData = { mime: f.type || 'application/octet-stream', data: String(rd.result).split(',')[1], name: f.name }; $('importMsg').textContent = `첨부됨: ${f.name}`; };
+  rd.readAsDataURL(f);
+});
+async function importRecipe() {
+  const text = $('recipeIn').value.trim(); if (!text && !mediaData) { $('importMsg').textContent = '글을 넣거나 녹음·사진을 첨부해 주세요.'; return; }
+  $('importMsg').textContent = 'AI가 단계 카드로 정리하는 중…';
+  try {
+    const r = await makeRecipe(text || '첨부한 녹음·사진의 레시피를 정리해 줘.', mediaData);
+    r.id = 'r' + Date.now(); r.source = $('srcIn').value; pendingImport = r;
+    $('importMsg').textContent = '';
+    $('importOut').innerHTML = `<div class="qa"><b>${esc(r.name)}</b> · ${r.steps.length}단계<br>${esc(r.steps.map(s => s.title).join(' → '))}<br>재료: ${esc((r.ingredients || []).join(', '))}</div>` +
+      (r.questions && r.questions.length ? `<div class="qa">AI 확인: ${r.questions.map(q => esc(q)).join('<br>')}</div>` : '') +
+      `<div class="row" style="margin-top:8px"><button class="btn" id="keepBtn">이대로 보관함에 저장</button></div>`;
+    $('keepBtn').onclick = () => { D.recipes.unshift(pendingImport); D.selected = pendingImport.id; saveD(); mediaData = null; pendingImport = null; tab = 'home'; render(); };
+  } catch (e) { $('importMsg').textContent = '실패: ' + e.message; }
+}
+async function scanFridgePhoto() {
+  const img = await pickPhoto(); if (!img) return;
+  $('scanMsg').textContent = '사진에서 재료를 찾는 중…';
+  try {
+    const out = await gemini('이 사진(냉장고 또는 영수증)에서 식재료 이름만 찾아 inventory 액션으로 돌려줘. say에는 찾은 개수를 짧게.', img);
+    const items = ((out.actions || []).find(a => a.type === 'inventory') || {}).items || [];
+    items.forEach(n => { if (!has(n)) D.fridge.push({ name: n, from: '사진' }); }); saveD(); render();
+    $('scanMsg').textContent = items.length ? `${items.join(', ')} 추가했어요.` : '찾은 재료가 없어요.';
+  } catch (e) { $('scanMsg').textContent = '실패: ' + e.message; }
+}
+
+// 글라스로 보내기 / 앱으로 돌아오기
+async function sendToGlass() {
+  const r = D.recipes.find(x => x.id === D.selected) || D.recipes[0];
+  S.recipe = clone(r); S.step = -1; S.subs = []; S.checked = {}; S.history = []; S.pendingOffer = null;
+  $('sendText').textContent = `“${r.name}”을(를) 글라스로 보내는 중…`; $('sendOverlay').style.display = 'flex';
+  try { speechSynthesis && speechSynthesis.getVoices(); } catch (e) {}
+  if (!S.started) { await initMic(); initRec(); await initCamera(); S.started = true; } else applyBg();
+  S.listening = true;
+  setTimeout(() => {
+    $('sendOverlay').style.display = 'none'; $('app').classList.add('hidden');
+    const miss = missing(r); const mem = memFor(r);
+    const lines = [`${r.servings || '1인분'} · ${r.steps.length}단계`];
+    if (miss.length) lines.push(`없는 재료: ${miss.join(', ')}`);
+    if (mem.length) lines.push(`지난번 기록: ${mem.map(m => m.note).join(', ')}`);
+    lines.push('“시작”이라고 말하면 시작해요');
+    showCard({ label: '연동 앱에서 받음', title: r.name, lines }, { ms: 7000 });
+    speak(`${r.name} 레시피를 받았어요.${mem.length ? ' 지난번에 ' + mem[0].note + '고 하셔서 반영할게요.' : ''} 시작이라고 말해 주세요.`);
+    startRec();
+  }, 1200);
+}
+function backToApp(toTab) {
+  S.listening = false; pauseRec(); hideCard(); try { speechSynthesis.cancel(); } catch (e) {}
+  if (toTab) tab = toTab; $('app').classList.remove('hidden'); render();
+}
+$('backApp').onclick = () => backToApp();
+function finishCooking() {
+  const r = S.recipe;
+  const used = (r.ingredients || []).filter(i => !PANTRY.includes(i) && has(i));
+  D.fridge = D.fridge.filter(f => !used.some(u => u === f.name || u.includes(f.name) || f.name.includes(u)));
+  D.history.push({ name: r.name, date: new Date().toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }), subs: S.subs.map(s => `${s.from}→${s.to} ${s.amount || ''}`.trim()), used });
+  saveD();
+}
+
+// ================= 글라스 HUD 표시 =================
+let cardTimer = null;
+function showCard({ label = '', title = '', lines = [], next = '', done = [] }, { ms = 5000, pin = false } = {}) {
+  $('cardLabel').textContent = label; $('cardTitle').textContent = title;
+  const box = $('cardLines'); box.innerHTML = '';
+  lines.forEach((l, i) => { const d = document.createElement('div'); d.textContent = (done[i] ? '✓ ' : '') + l; if (done[i]) d.className = 'done'; box.appendChild(d); });
+  if (next) { const d = document.createElement('div'); d.className = 'next'; d.textContent = '다음 · ' + next; box.appendChild(d); }
+  const c = $('card'); c.classList.toggle('pinned', pin); c.classList.add('show');
+  clearTimeout(cardTimer); if (!pin && ms > 0) cardTimer = setTimeout(hideCard, ms);
+}
+function hideCard() { clearTimeout(cardTimer); $('card').classList.remove('show'); setTimeout(() => { if (!$('card').classList.contains('show')) $('card').classList.remove('pinned'); }, 400); }
+function isPinned() { return $('card').classList.contains('pinned') && $('card').classList.contains('show'); }
+function stepCard(i, opts) {
+  const st = S.recipe.steps[i]; if (!st) return;
+  const nx = S.recipe.steps[i + 1]; const done = st.lines.map((_, k) => !!(S.checked[i] && S.checked[i][k]));
+  showCard({ label: `${String(i + 1).padStart(2, '0')} / ${String(S.recipe.steps.length).padStart(2, '0')} · ${S.recipe.name}`, title: st.title, lines: st.lines, next: nx ? nx.title : '', done },
+    opts || { ms: st.safety ? 3500 : 6000, pin: st.pinList || isPinned() });
+}
+let sayTimer = null;
+function showSay(t) { $('say').textContent = t; $('say').classList.add('show'); clearTimeout(sayTimer); sayTimer = setTimeout(() => $('say').classList.remove('show'), Math.max(3500, t.length * 120)); }
+function setStatus(kind, text) { $('status').className = 'chip ' + kind; $('statusText').textContent = text; }
+
+// ================= 음성 =================
+function speak(text) {
+  showSay(text);
+  if (!text || store.get('tts', 'on') === 'off' || !('speechSynthesis' in window)) return Promise.resolve();
+  return new Promise(res => {
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text); u.lang = 'ko-KR'; u.rate = 1.05;
+      const v = speechSynthesis.getVoices().find(v => v.lang && v.lang.startsWith('ko')); if (v) u.voice = v;
+      S.speaking = true; pauseRec();
+      u.onend = u.onerror = () => { S.speaking = false; resumeRec(); res(); };
+      speechSynthesis.speak(u);
+    } catch (e) { S.speaking = false; res(); }
+  });
+}
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, recActive = false;
+function initRec() {
+  if (!SR) { $('heard').textContent = '이 브라우저는 음성 인식을 지원하지 않아요. 아래 입력창을 쓰세요.'; return; }
+  rec = new SR(); rec.lang = 'ko-KR'; rec.interimResults = true; rec.continuous = false;
+  rec.onresult = e => { let fin = '', interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) fin += t; else interim += t; }
+    $('heard').textContent = '“' + (fin || interim) + '”'; if (fin.trim()) handle(fin.trim()); };
+  rec.onend = () => { recActive = false; if (S.listening && !S.speaking) setTimeout(startRec, 250); };
+  rec.onerror = e => { recActive = false;
+    const why = { 'not-allowed': '마이크 권한이 막혀 있어요 (주소창 자물쇠 → 권한 → 마이크 허용)', 'service-not-allowed': '이 브라우저에서는 음성 인식을 쓸 수 없어요 (크롬으로 열어 주세요)', 'audio-capture': '마이크를 찾지 못했어요', 'network': '음성 인식 서버에 연결하지 못했어요 (인터넷 확인)' }[e.error];
+    if (why) { $('heard').textContent = why; }
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { S.listening = false; setStatus('', '음성 인식 꺼짐'); } };
+}
+function startRec() { if (!rec || recActive || S.speaking || !S.listening) return; try { rec.start(); recActive = true; setStatus('listen', '듣는 중'); } catch (e) {} }
+function pauseRec() { if (rec && recActive) { try { rec.abort(); } catch (e) {} recActive = false; } }
+function resumeRec() { if (S.listening) setTimeout(startRec, 300); }
+$('micBtn').onclick = () => { S.listening = !S.listening; if (S.listening) startRec(); else { pauseRec(); setStatus('', '듣기 꺼짐'); } };
+
+// ================= 카메라 (요청 시에만 한 장) =================
+async function initMic() {
+  if (!window.isSecureContext) { $('heard').textContent = 'HTTPS 주소에서 열어야 마이크·카메라가 켜져요'; return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  try { const a = await navigator.mediaDevices.getUserMedia({ audio: true }); a.getTracks().forEach(t => t.stop()); }
+  catch (e) { $('heard').textContent = '마이크 권한이 거부됐어요. 주소창 자물쇠 → 권한 → 마이크를 허용해 주세요.'; }
+}
+async function initCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  try { S.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false }); $('bg').srcObject = S.stream; applyBg(); }
+  catch (e) { S.stream = null; }
+}
+function applyBg() { $('bg').style.display = (store.get('bg', 'black') === 'camera' && S.stream) ? 'block' : 'none'; }
+function grabFrame() {
+  const v = $('bg'); if (!S.stream || !v.videoWidth) return null;
+  const w = 768, h = Math.round(v.videoHeight * w / v.videoWidth); const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(v, 0, 0, w, h); return c.toDataURL('image/jpeg', 0.8).split(',')[1];
+}
+let pickResolve = null;
+function pickPhoto() { return new Promise(res => { pickResolve = res; $('filePick').value = ''; $('filePick').click(); }); }
+$('filePick').addEventListener('change', () => {
+  const f = $('filePick').files[0]; if (!f || !pickResolve) return;
+  const img = new Image(); const url = URL.createObjectURL(f);
+  img.onload = () => { const w = 768, h = Math.round(img.height * w / img.width); const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url); const r = pickResolve; pickResolve = null; r(c.toDataURL('image/jpeg', 0.8).split(',')[1]); };
+  img.src = url;
+});
+async function snap() { setStatus('cam', '촬영 중'); let b = grabFrame(); await new Promise(r => setTimeout(r, 350)); return b || grabFrame(); }
+
+// ================= 타이머 =================
+function startTimer(seconds, label) { S.timers.push({ id: Date.now() + Math.random(), label: label || '타이머', end: Date.now() + seconds * 1000, done: false }); renderTimers(); }
+function renderTimers() {
+  const box = $('timers'); box.innerHTML = '';
+  S.timers.forEach(t => { const left = Math.max(0, Math.round((t.end - Date.now()) / 1000));
+    const d = document.createElement('div'); d.className = 'chip timer' + (t.done ? ' done' : '');
+    d.innerHTML = `<small></small><b>${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}</b>`;
+    d.querySelector('small').textContent = t.label + (t.done ? ' · 끝' : ''); box.appendChild(d); });
+}
+function beep() { try { const a = new (window.AudioContext || window.webkitAudioContext)(); [0, .35, .7].forEach(s => { const o = a.createOscillator(), g = a.createGain(); o.frequency.value = 880; o.connect(g); g.connect(a.destination); g.gain.setValueAtTime(.2, a.currentTime + s); o.start(a.currentTime + s); o.stop(a.currentTime + s + .2); }); } catch (e) {} }
+setInterval(() => {
+  S.timers.forEach(t => { if (!t.done && Date.now() >= t.end) { t.done = true; beep();
+    speak(t.label === '숙성' ? '숙성이 끝났어요. 볶으러 가 볼까요?' : (S.step >= S.recipe.steps.length - 2 ? `${t.label} 타이머가 끝났어요. 불 끄셨나요?` : `${t.label} 타이머가 끝났어요.`));
+    setTimeout(() => { S.timers = S.timers.filter(x => x !== t); renderTimers(); }, 15000); } });
+  if (S.timers.length) renderTimers();
+}, 500);
+
+// ================= 로컬 명령 =================
+const KNUM = { '한': 1, '하나': 1, '두': 2, '둘': 2, '세': 3, '셋': 3, '네': 4, '넷': 4, '다섯': 5, '여섯': 6, '일곱': 7, '여덟': 8, '아홉': 9, '열': 10, '십': 10, '이십': 20, '삼십': 30, '사십': 40, '오십': 50, '일': 1, '이': 2, '삼': 3, '사': 4, '오': 5, '육': 6, '칠': 7, '팔': 8, '구': 9 };
+function parseDuration(t) {
+  let total = 0, found = false; const re = /(\d+|열|십|이십|삼십|사십|오십|한|하나|두|둘|세|셋|네|넷|다섯|여섯|일곱|여덟|아홉|일|이|삼|사|오|육|칠|팔|구)\s*(시간|분|초)/g; let m;
+  while ((m = re.exec(t))) { const n = /^\d+$/.test(m[1]) ? +m[1] : KNUM[m[1]]; if (!n) continue; found = true; total += n * (m[2] === '시간' ? 3600 : m[2] === '분' ? 60 : 1); }
+  return found ? total : 0;
+}
+function fmtDur(s) { const m = Math.floor(s / 60), r = s % 60; return ((m ? m + '분' : '') + (r ? ' ' + r + '초' : '')).trim() || '0초'; }
+const YES = /^(응|네|넵|예|어|그래|좋아|오케이|ㅇㅇ|해\s*줘|맞춰\s*줘|부탁해)/;
+const NO = /^(아니|괜찮아|됐어|안\s*해)/;
+const NEEDS_IMAGE = /(이거|이걸|이것|요거|이\s*정도|이만큼|봐\s*줘|보여\s*줄게|냉장고|냉털|뭐\s*만들|뭐\s*해\s*먹|졸았|익었|다\s*익|색\s*깔|이\s*양)/;
+function gotoStep(i, opts) {
+  S.step = Math.max(0, Math.min(i, S.recipe.steps.length - 1)); const st = S.recipe.steps[S.step];
+  S.pendingOffer = st.offer || null; stepCard(S.step, opts); return speak(st.say);
+}
+function checkItem(n) {
+  if (S.step < 0) return false; const st = S.recipe.steps[S.step];
+  if (!/(넣었|넣음|했어|완료|체크)/.test(n)) return false;
+  const k = st.lines.findIndex(l => { const key = l.split(/\s|\(/)[0].replace(/·.*/, ''); return key.length >= 2 && n.includes(key); });
+  if (k < 0) return false;
+  (S.checked[S.step] = S.checked[S.step] || {})[k] = true;
+  stepCard(S.step, { pin: true });
+  const left = st.lines.filter((_, j) => !S.checked[S.step][j]);
+  speak(left.length ? `체크했어요. ${left.length}개 남았어요.` : '양념 다 넣었어요. 다 되면 “다음”이라고 해 주세요.');
+  return true;
+}
+function handleLocal(t) {
+  const n = t.replace(/[.,!?~]/g, '').trim();
+  if (S.pendingOffer && n.length <= 10 && YES.test(n)) { const o = S.pendingOffer; S.pendingOffer = null; startTimer(o.seconds, o.label); speak(`${o.label} 타이머 ${fmtDur(o.seconds)} 시작할게요.`); return true; }
+  if (S.pendingOffer && n.length <= 10 && NO.test(n)) { S.pendingOffer = null; speak('알겠어요. 필요하면 말씀해 주세요.'); return true; }
+  if (/타이머\s*(꺼|끄|취소|없애)/.test(n)) { S.timers = []; renderTimers(); speak('타이머를 껐어요.'); return true; }
+  if (/타이머/.test(n) && parseDuration(n)) { const sec = parseDuration(n); const label = /여기|팬/.test(n) ? '팬' : /냄비/.test(n) ? '냄비' : (S.recipe.steps[S.step] || {}).title || '타이머'; startTimer(sec, label); speak(`${fmtDur(sec)} 타이머 시작할게요.`); return true; }
+  if (/(몇\s*분\s*남|얼마나\s*남)/.test(n)) { const live = S.timers.filter(t => !t.done); speak(live.length ? live.map(t => `${t.label} ${fmtDur(Math.round((t.end - Date.now()) / 1000))}`).join(', ') + ' 남았어요.' : '지금 돌아가는 타이머는 없어요.'); return true; }
+  if (/^(요리\s*)?(시작|시작하자|시작해)/.test(n) && S.step < 0) { gotoStep(0); return true; }
+  if (checkItem(n)) return true;
+  const short = n.length <= 14 && !NEEDS_IMAGE.test(n) && !/[?？]/.test(t);
+  if ((short && /(다\s*했어|다음|넘겨|됐어|만들었어|끝났어)$/.test(n)) || /^다음(\s*(단계|거))?$/.test(n)) {
+    if (S.step >= S.recipe.steps.length - 1) { speak('마지막 단계예요. 완성되면 “완성”이라고 말해 주세요.'); return true; }
+    gotoStep(S.step + 1); return true;
+  }
+  if (/^(이전|뒤로|전\s*단계)/.test(n)) { gotoStep(S.step - 1); return true; }
+  if (/(띄워|고정|붙여)/.test(n)) { if (S.step < 0) S.step = 0; stepCard(S.step, { pin: true }); speak('오른쪽에 띄워 둘게요.'); return true; }
+  if (/(숨겨|닫아|치워|내려)/.test(n)) { hideCard(); return true; }
+  if (/(레시피\s*보여|다음\s*(뭐|모)|뭐\s*하면\s*돼|지금\s*뭐|다시\s*보여|다시\s*말해)/.test(n) && S.step >= 0) { stepCard(S.step, { ms: 6000, pin: isPinned() }); speak(S.recipe.steps[S.step].say); return true; }
+  if (/^완성/.test(n)) { hideCard(); finishCooking(); speak('맛있게 드세요! 쓴 재료는 냉장고에서 뺐어요. 맛이 어땠는지 말해 주시면 다음에 반영할게요.'); S.step = S.recipe.steps.length; return true; }
+  if (/요리\s*조리\s*(켜|시작)/.test(n)) { speak('좋은 아침이에요. 오늘은 무슨 요리를 같이 해 볼까요?'); return true; }
+  return false;
+}
+
+// ================= Gemini =================
+function sysPrompt() {
+  const r = S.recipe;
+  return [
+    '너는 스마트글라스 요리 앱 "요리조리"의 음성 AI다. 사용자는 요리 중이라 손이 바쁘다.',
+    '규칙: say는 한국어 구어체 1~2문장, 40자 안팎. 화면 카드는 꼭 필요할 때만 짧게.',
+    '익힘·식품 안전은 단정하지 말고 확인 방법을 안내한다. 사진이 있으면 보이는 것만 말하고, 양은 대략으로만 말하며 정확히 하려면 계량을 권한다.',
+    '대체 재료 양은 아래 검수 기준표에 있으면 그 값을 쓰고, 없으면 숫자 없이 "조금씩 넣고 맛보며"로 안내한다. 알레르기 재료는 대체를 권하지 않는다.',
+    '사용자가 입맛("덜 달게", "더 맵게" 등)을 말하면 remember 액션(note는 "덜 달게"처럼 짧게)으로 남긴다. 메뉴를 고르면 choose_menu 액션.',
+    '반드시 JSON 하나로만 답한다: {"say":string,"card":{"title":string,"lines":[string]}|null,"actions":[{"type":"substitute","from":string,"to":string,"amount":string}|{"type":"offer_timer","seconds":number,"label":string}|{"type":"start_timer","seconds":number,"label":string}|{"type":"remember","note":string}|{"type":"inventory","items":[string]}|{"type":"choose_menu","menu":string}]}',
+    '', `현재 레시피: ${r.name}`,
+    `단계: ${r.steps.map((s, i) => `${i}.${s.title}(${s.lines.join(', ')})`).join(' / ')}`,
+    `현재 단계 index: ${S.step} (${S.step >= 0 && r.steps[S.step] ? r.steps[S.step].title : '시작 전'})`,
+    `진행 중 타이머: ${S.timers.filter(t => !t.done).map(t => `${t.label} ${Math.round((t.end - Date.now()) / 1000)}초 남음`).join(', ') || '없음'}`,
+    `받아들인 대체: ${S.subs.map(s => `${s.from}→${s.to} ${s.amount}`).join(', ') || '없음'}`,
+    `냉장고 재료: ${D.fridge.map(f => f.name).join(', ') || '모름'}`,
+    `저장한 레시피: ${D.recipes.map(x => x.name).join(', ')}`,
+    `기억한 입맛: ${D.memory.map(m => (m.recipe ? m.recipe + ' ' : '') + m.note).join(' / ') || '없음'}`,
+    `검수 대체 기준표(예시): ${SUBSTITUTES.join(' | ')}`
+  ].join('\n');
+}
+async function gemini(userText, imageB64, extraSys, media) {
+  const key = store.get('key', ''); const model = store.get('model', 'gemini-3.1-flash-lite') || 'gemini-3.1-flash-lite';
+  if (!key) throw new Error('⚙ 설정에서 Gemini API 키를 먼저 넣어 주세요.');
+  const parts = [{ text: userText }];
+  if (imageB64) parts.push({ inline_data: { mime_type: 'image/jpeg', data: imageB64 } });
+  if (media) parts.push({ inline_data: { mime_type: media.mime, data: media.data } });
+  const contents = (extraSys ? [] : S.history.slice(-6)).concat([{ role: 'user', parts }]);
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify({ systemInstruction: { parts: [{ text: extraSys || sysPrompt() }] }, contents, generationConfig: { responseMimeType: 'application/json', temperature: 0.4 } }) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data.error && data.error.message) || ('API 오류 ' + res.status));
+  const txt = ((((data.candidates || [])[0] || {}).content || {}).parts || []).map(p => p.text || '').join('');
+  if (!extraSys) S.history.push({ role: 'user', parts: [{ text: userText + (imageB64 ? ' [사진 첨부]' : '') }] }, { role: 'model', parts: [{ text: txt }] });
+  try { return JSON.parse(txt); } catch (e) { const m = txt.match(/\{[\s\S]*\}/); if (m) return JSON.parse(m[0]); return { say: txt.slice(0, 120), card: null, actions: [] }; }
+}
+async function makeRecipe(text, media) {
+  const sys = '레시피 글·녹음·사진을 요리 단계 카드로 정리한다. 애매한 양("대충 한 숟갈")은 가장 흔한 해석으로 정하고 questions에 사용자에게 확인할 질문으로 남긴다. JSON만: {"name":string,"servings":string,"ingredients":[string],"questions":[string],"steps":[{"title":string,"lines":[string],"say":string,"offer":{"seconds":number,"label":string}|null}]}. ingredients는 재료 이름만. say는 1~2문장 구어체. 단계는 4~8개.';
+  const out = await gemini(text, null, sys, media);
+  if (!out.steps || !out.steps.length) throw new Error('단계를 찾지 못했어요');
+  out.steps.forEach(s => { if (!s.offer) delete s.offer; s.lines = s.lines || []; s.say = s.say || s.title; });
+  out.ingredients = out.ingredients || []; return out;
+}
+function applyActions(out) {
+  for (const a of (out.actions || [])) {
+    if (a.type === 'substitute' && a.from) {
+      S.subs.push(a);
+      S.recipe.steps.forEach(st => { st.lines = st.lines.map(l => l.includes(a.from) ? `${a.to} ${a.amount || ''} (${a.from} 대신)`.replace(/\s+/g, ' ').trim() : l); });
+      if (S.step >= 0) setTimeout(() => stepCard(S.step, { ms: 6000, pin: isPinned() }), 200);
+    } else if (a.type === 'offer_timer' && a.seconds) S.pendingOffer = { seconds: a.seconds, label: a.label || '타이머' };
+    else if (a.type === 'start_timer' && a.seconds) startTimer(a.seconds, a.label);
+    else if (a.type === 'remember' && a.note) { D.memory.push({ recipe: S.recipe.name.replace('엄마표 ', ''), note: a.note }); saveD();
+      showCard({ label: '입맛 기억 · 연동 앱에 저장', title: a.note, lines: ['다음 조리 때 먼저 반영할게요'] }, { ms: 4500 }); }
+    else if (a.type === 'inventory' && a.items) { a.items.forEach(n => { if (!has(n)) D.fridge.push({ name: n, from: '글라스' }); }); saveD(); }
+    else if (a.type === 'choose_menu' && a.menu) chooseMenu(a.menu);
+  }
+}
+async function chooseMenu(menu) {
+  const key = menu.replace(/\s/g, '');
+  let r = D.recipes.find(x => x.name.replace(/\s/g, '').includes(key) || key.includes(x.name.replace(/\s|엄마표/g, '')));
+  if (!r) { try { setStatus('think', '레시피 만드는 중'); r = await makeRecipe(`${menu} 1인분 레시피. 보유 재료: ${D.fridge.map(f => f.name).join(', ')}`); r.id = 'r' + Date.now(); r.source = 'AI 생성(미검수)'; D.recipes.push(r); saveD(); }
+    catch (e) { speak('레시피를 만들지 못했어요. ' + e.message); return; } }
+  S.recipe = clone(r); S.step = -1; S.subs = []; S.checked = {}; D.selected = r.id; saveD();
+  S.after = () => gotoStep(0);
+}
+
+// ================= 처리 흐름 =================
+let busy = false;
+async function handle(text) {
+  if (!text || busy) return;
+  $('heard').textContent = '“' + text + '”';
+  if (handleLocal(text)) return;
+  busy = true;
+  try {
+    const img = NEEDS_IMAGE.test(text) ? await snap() : null;
+    setStatus('think', '생각 중');
+    const out = await gemini(text, img);
+    applyActions(out);
+    if (out.card && out.card.title) showCard({ label: '요리조리', title: out.card.title, lines: out.card.lines || [] }, { ms: 6000 });
+    await speak(out.say || '');
+    if (S.after) { const f = S.after; S.after = null; await new Promise(r => setTimeout(r, 400)); f(); }
+  } catch (e) { speak('잠깐 문제가 생겼어요. ' + e.message); }
+  finally { busy = false; setStatus(S.listening ? 'listen' : '', S.listening ? '듣는 중' : '대기'); }
+}
+$('camBtn').onclick = async () => {
+  let img = grabFrame(); if (!img) img = await pickPhoto();
+  const q = $('textIn').value.trim() || '이거 봐 줘. 지금 단계에서 도움이 되는 말을 해 줘.'; $('textIn').value = '';
+  busy = true;
+  try { setStatus('think', '생각 중'); const out = await gemini(q, img); applyActions(out); if (out.card && out.card.title) showCard({ label: '요리조리', title: out.card.title, lines: out.card.lines || [] }); await speak(out.say || ''); }
+  catch (e) { speak('잠깐 문제가 생겼어요. ' + e.message); }
+  finally { busy = false; setStatus(S.listening ? 'listen' : '', S.listening ? '듣는 중' : '대기'); }
+};
+$('textIn').addEventListener('keydown', e => { if (e.key === 'Enter') { const v = $('textIn').value.trim(); $('textIn').value = ''; handle(v); } });
+
+// ================= 설정 =================
+function openSettings() { $('keyIn').value = store.get('key', ''); $('modelIn').value = store.get('model', 'gemini-3.1-flash-lite'); $('bgIn').value = store.get('bg', 'black'); $('ttsIn').value = store.get('tts', 'on'); $('settings').style.display = 'block'; }
+$('appSet').onclick = openSettings;
+$('saveBtn').onclick = () => { store.set('key', $('keyIn').value.trim()); store.set('model', $('modelIn').value.trim() || 'gemini-3.1-flash-lite'); store.set('bg', $('bgIn').value); store.set('tts', $('ttsIn').value); applyBg(); $('settings').style.display = 'none'; };
+$('resetBtn').onclick = () => { D.recipes = clone(DEFAULT_RECIPES); D.fridge = clone(DEFAULT_FRIDGE); D.history = []; D.memory = []; D.selected = 'jeyuk'; saveD(); $('settings').style.display = 'none'; tab = 'home'; render(); };
+let dimT = null; function wake() { $('controls').classList.remove('dim'); clearTimeout(dimT); dimT = setTimeout(() => $('controls').classList.add('dim'), 6000); }
+['touchstart', 'mousemove', 'keydown'].forEach(ev => document.addEventListener(ev, wake, { passive: true })); wake();
+render();
+window.__yrjr = { S, D, handle, sendToGlass, backToApp };
+})();
+</script>
+</body>
+</html>
