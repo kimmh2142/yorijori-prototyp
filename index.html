@@ -133,6 +133,8 @@
   <div class="note">키는 이 브라우저에만 저장돼요. 링크를 공유해도 키는 같이 가지 않아요.</div>
   <label>모델</label>
   <input id="modelIn" placeholder="gemini-3.1-flash-lite">
+  <label>글라스 연결 (시연용)</label>
+  <select id="glassIn"><option value="on">연결됨 · 요리 시작 시 글라스 화면으로</option><option value="off">없음 · 휴대폰에 레시피 표시</option></select>
   <label>글라스 배경</label>
   <select id="bgIn"><option value="black">검정 (영상 합성용)</option><option value="camera">카메라 화면 (글라스 시야처럼)</option></select>
   <label>음성 답변 (TTS)</label>
@@ -205,7 +207,7 @@ const has = n => D.fridge.some(f => f.name === n || n.includes(f.name) || f.name
 function missing(r) { return (r.ingredients || []).filter(i => !has(i)); }
 function memFor(r) { return D.memory.filter(m => r.name.includes(m.recipe) || (m.recipe && m.recipe.includes(r.name.replace('엄마표 ', '')))); }
 function render() {
-  document.querySelectorAll('#appTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  document.querySelectorAll('#appTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab || (tab === 'cook' && b.dataset.tab === 'home')));
   const B = $('appBody');
   if (tab === 'home') {
     $('appTitle').textContent = '오늘 뭐 먹지?';
@@ -220,9 +222,9 @@ function render() {
           <h3>${esc(r.name)}</h3><p>${status}<span class="tag">${esc(r.source || '내 레시피')}</span></p>
           ${mem.length ? `<p style="margin-top:6px">지난번 기록: ${esc(mem.map(m => m.note).join(' · '))} → 반영해서 안내</p>` : ''}</div>`;
       }).join('') +
-      `<button class="btn" id="sendBtn">🕶 글라스로 보내기</button><p class="note">보내면 글라스에 첫 단계 카드가 떠요. 카메라는 질문할 때만 한 장 써요.</p>`;
+      `<button class="btn" id="sendBtn">🍳 요리 시작</button><p class="note">${store.get('glass', 'on') === 'on' ? '🕶 글라스 연결됨 · 글라스에 첫 단계 카드가 떠요. 글라스에서 “엄마표 제육 꺼내 줘”처럼 말로 불러와도 돼요.' : '글라스 없음 · 이 화면에 레시피가 단계별로 떠요.'}</p>`;
     B.querySelectorAll('[data-pick]').forEach(el => el.onclick = () => { D.selected = el.dataset.pick; saveD(); render(); });
-    $('sendBtn').onclick = sendToGlass;
+    $('sendBtn').onclick = startCooking;
   } else if (tab === 'recipes') {
     $('appTitle').textContent = '레시피 보관함';
     B.innerHTML = `<p class="sub">릴스·유튜브 설명, 글·사진, 엄마 음성 메모를 같은 카드로</p>
@@ -244,6 +246,17 @@ function render() {
     B.querySelectorAll('[data-del]').forEach(el => el.onclick = () => { D.fridge.splice(+el.dataset.del, 1); saveD(); render(); });
     $('addBtn').onclick = () => { const v = $('addIn').value.trim(); if (v) { D.fridge.push({ name: v, from: '직접' }); saveD(); render(); } };
     $('scanBtn').onclick = scanFridgePhoto;
+  } else if (tab === 'cook') {
+    const r = S.recipe, i = Math.max(0, S.step);
+    $('appTitle').textContent = r.name;
+    const miss = missing(r);
+    B.innerHTML = `<p class="sub">글라스 없이 휴대폰으로 보기 · ${r.steps.length}단계${miss.length ? ' · 없는 재료: ' + esc(miss.join(', ')) : ''}</p>` +
+      r.steps.map((st, k) => `<div class="card ${k === i ? 'peach sel' : ''}" data-step="${k}"><h3>${k + 1}. ${esc(st.title)}</h3>${st.lines.map(l => `<p>· ${esc(l)}</p>`).join('')}</div>`).join('') +
+      `<div class="row" style="position:sticky;bottom:0;padding-top:8px;background:var(--cream)"><button class="btn ghost" id="prevBtn">이전</button><button class="btn" id="nextBtn">${i >= r.steps.length - 1 ? '완성' : '다음'}</button></div>`;
+    B.querySelectorAll('[data-step]').forEach(el => el.onclick = () => { S.step = +el.dataset.step; render(); });
+    $('prevBtn').onclick = () => { S.step = Math.max(0, i - 1); render(); };
+    $('nextBtn').onclick = () => { if (i >= r.steps.length - 1) { finishCooking(); tab = 'records'; } else { S.step = i + 1; } render(); };
+    const cur = B.querySelector('.card.sel'); if (cur) cur.scrollIntoView({ block: 'center' });
   } else {
     $('appTitle').textContent = '조리 기록 · 내 입맛';
     B.innerHTML = `<p class="sub">기억한 입맛은 다음 안내에 반영돼요. 언제든 지울 수 있어요.</p>
@@ -286,6 +299,13 @@ async function scanFridgePhoto() {
   } catch (e) { $('scanMsg').textContent = '실패: ' + e.message; }
 }
 
+// 요리 시작: 글라스가 있으면 HUD로, 없으면 휴대폰 화면에 레시피
+function startCooking() {
+  if (store.get('glass', 'on') === 'on') return sendToGlass();
+  const r = D.recipes.find(x => x.id === D.selected) || D.recipes[0];
+  S.recipe = clone(r); S.step = 0; S.subs = []; S.checked = {}; tab = 'cook'; render();
+}
+function loadRecipe(r) { S.recipe = clone(r); S.step = -1; S.subs = []; S.checked = {}; S.history = []; S.pendingOffer = null; D.selected = r.id; saveD(); }
 // 글라스로 보내기 / 앱으로 돌아오기
 async function sendToGlass() {
   const r = D.recipes.find(x => x.id === D.selected) || D.recipes[0];
@@ -447,8 +467,24 @@ function checkItem(n) {
   speak(left.length ? `체크했어요. ${left.length}개 남았어요.` : '양념 다 넣었어요. 다 되면 “다음”이라고 해 주세요.');
   return true;
 }
+function findRecipe(n) {
+  const c = n.replace(/\s/g, '');
+  return D.recipes.find(r => { const base = r.name.replace(/엄마표\s*/, '').replace(/\s/g, ''); return c.includes(base) || c.includes(base.slice(0, 2)) && base.length >= 2; });
+}
 function handleLocal(t) {
   const n = t.replace(/[.,!?~]/g, '').trim();
+  if (/(저장(한|된)?\s*레시피|레시피\s*(목록|뭐\s*있))/.test(n)) {
+    showCard({ label: '연동 앱 보관함', title: '저장한 레시피', lines: D.recipes.map(r => `${r.name} · ${missing(r).length ? missing(r).join(', ') + ' 없음' : '바로 가능'}`) }, { ms: 8000 });
+    speak(`${D.recipes.map(r => r.name).join(', ')}가 있어요. 무엇을 할까요?`); return true;
+  }
+  if (/(꺼내|불러|하자|할래|할게|만들자|해\s*줘|시작)/.test(n) && !/타이머/.test(n)) {
+    const r = findRecipe(n);
+    if (r && (S.step < 0 || /(꺼내|불러|레시피)/.test(n) || r.name !== S.recipe.name)) {
+      loadRecipe(r); const mem = memFor(r);
+      speak(`${r.name} 레시피를 불러왔어요.${mem.length ? ' 지난번에 ' + mem[0].note + '고 하셔서 반영할게요.' : ''}`).then(() => gotoStep(0));
+      return true;
+    }
+  }
   if (S.pendingOffer && n.length <= 10 && YES.test(n)) { const o = S.pendingOffer; S.pendingOffer = null; startTimer(o.seconds, o.label); speak(`${o.label} 타이머 ${fmtDur(o.seconds)} 시작할게요.`); return true; }
   if (S.pendingOffer && n.length <= 10 && NO.test(n)) { S.pendingOffer = null; speak('알겠어요. 필요하면 말씀해 주세요.'); return true; }
   if (/타이머\s*(꺼|끄|취소|없애)/.test(n)) { S.timers = []; renderTimers(); speak('타이머를 껐어요.'); return true; }
@@ -566,9 +602,9 @@ $('camBtn').onclick = async () => {
 $('textIn').addEventListener('keydown', e => { if (e.key === 'Enter') { const v = $('textIn').value.trim(); $('textIn').value = ''; handle(v); } });
 
 // ================= 설정 =================
-function openSettings() { $('keyIn').value = store.get('key', ''); $('modelIn').value = store.get('model', 'gemini-3.1-flash-lite'); $('bgIn').value = store.get('bg', 'black'); $('ttsIn').value = store.get('tts', 'on'); $('settings').style.display = 'block'; }
+function openSettings() { $('glassIn').value = store.get('glass', 'on'); $('keyIn').value = store.get('key', ''); $('modelIn').value = store.get('model', 'gemini-3.1-flash-lite'); $('bgIn').value = store.get('bg', 'black'); $('ttsIn').value = store.get('tts', 'on'); $('settings').style.display = 'block'; }
 $('appSet').onclick = openSettings;
-$('saveBtn').onclick = () => { store.set('key', $('keyIn').value.trim()); store.set('model', $('modelIn').value.trim() || 'gemini-3.1-flash-lite'); store.set('bg', $('bgIn').value); store.set('tts', $('ttsIn').value); applyBg(); $('settings').style.display = 'none'; };
+$('saveBtn').onclick = () => { store.set('glass', $('glassIn').value); render(); store.set('key', $('keyIn').value.trim()); store.set('model', $('modelIn').value.trim() || 'gemini-3.1-flash-lite'); store.set('bg', $('bgIn').value); store.set('tts', $('ttsIn').value); applyBg(); $('settings').style.display = 'none'; };
 $('resetBtn').onclick = () => { D.recipes = clone(DEFAULT_RECIPES); D.fridge = clone(DEFAULT_FRIDGE); D.history = []; D.memory = []; D.selected = 'jeyuk'; saveD(); $('settings').style.display = 'none'; tab = 'home'; render(); };
 let dimT = null; function wake() { $('controls').classList.remove('dim'); clearTimeout(dimT); dimT = setTimeout(() => $('controls').classList.add('dim'), 6000); }
 ['touchstart', 'mousemove', 'keydown'].forEach(ev => document.addEventListener(ev, wake, { passive: true })); wake();
