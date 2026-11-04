@@ -41,6 +41,19 @@
   #appTabs button { flex:1; background:none; border:0; padding:10px 0 12px; font-size:12px; color:var(--muted); display:flex; flex-direction:column; align-items:center; gap:2px; }
   #appTabs button span { font-size:20px; }
   #appTabs button.on { color:var(--red); font-weight:800; }
+  .search { margin-bottom:4px; border-radius:999px !important; padding:12px 16px !important; border:2px solid var(--dark) !important; }
+  .cats { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px 6px; margin:14px 0 6px; }
+  .cat { background:none; border:0; display:flex; flex-direction:column; align-items:center; gap:6px; font-size:13px; color:var(--dark); }
+  .cat span { width:62px; height:62px; border-radius:20px; background:#F4EEE8; display:flex; align-items:center; justify-content:center; font-size:30px; }
+  .sec { margin:16px 0 8px; font-size:16px; }
+  .hscroll { display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; }
+  .mini { flex:0 0 auto; background:#fff; border:1px solid var(--border); border-radius:16px; padding:10px 14px; display:flex; flex-direction:column; gap:2px; min-width:120px; }
+  .mini.sel { border:2px solid var(--red); background:var(--peach); }
+  .mini small { color:var(--muted); font-size:12px; }
+  .rc { position:relative; padding-right:48px; }
+  .fav { position:absolute; right:10px; top:10px; background:none; border:0; font-size:22px; color:var(--red); }
+  .cookbar { position:sticky; bottom:0; background:var(--cream); padding-top:10px; }
+  .sel-name { font-size:13px; color:var(--muted); margin-bottom:6px; }
   .note { font-size:12px; color:var(--muted); line-height:1.5; margin-top:8px; }
   .qa { background:var(--yel); border-radius:12px; padding:10px 12px; font-size:13px; margin-top:8px; line-height:1.5; }
   #sendOverlay { position:fixed; inset:0; background:rgba(20,24,22,.92); color:var(--ink); z-index:20; display:none; align-items:center; justify-content:center; flex-direction:column; gap:10px; font-size:18px; }
@@ -156,87 +169,195 @@ const store = {
 };
 
 // ================= 시연용 기본 데이터 (검수 전) =================
-const PANTRY = ['고추장', '고춧가루', '다진 마늘', '간장', '설탕', '식용유', '참기름', '통깨', '후추', '소금'];
-const DEFAULT_RECIPES = [
-  { id: 'jeyuk', name: '엄마표 제육볶음', source: '엄마 메모', servings: '1인분',
+const PANTRY = ['고추장', '고춧가루', '다진 마늘', '간장', '설탕', '식용유', '참기름', '통깨', '후추', '소금', '올리브유', '마요네즈', '전분'];
+const CATS = [
+  { key: '한식', icon: '🍚' }, { key: '중식', icon: '🥟' }, { key: '양식', icon: '🍝' }, { key: '일식', icon: '🍣' },
+  { key: '분식', icon: '🍢' }, { key: '간식', icon: '🍞' }, { key: '내 레시피', icon: '📒' }, { key: '즐겨찾기', icon: '♥' }
+];
+const st = (title, lines, say, extra) => Object.assign({ title, lines, say }, extra || {});
+const BUILTIN = [
+  { id: 'jeyuk', cat: '한식', name: '엄마표 제육볶음', source: '엄마 메모', servings: '1인분', mine: true,
     ingredients: ['돼지고기', '양파', '대파', '청양고추', '고추장', '고춧가루', '다진 마늘', '매실액', '간장'],
     steps: [
-      { title: '재료 손질', lines: ['대파·청양고추 어슷썰기', '양파 1cm 두께로 썰기', '돼지고기 한입 크기로 썰기'],
-        say: '재료 손질부터 시작할게요. 대파와 청양고추는 어슷하게, 양파는 1센티 두께로, 고기는 한입 크기로 썰어 주세요.', safety: true },
-      { title: '양념장 만들기', lines: ['고추장 3큰술', '고춧가루 2큰술', '다진 마늘 1큰술', '매실액 2큰술', '간장 1큰술', '통깨·후추 약간'],
-        say: '다음은 양념장이에요. 양념이 많으니 오른쪽에 띄워 둘게요. 넣은 건 말해 주시면 체크할게요.', pinList: true },
-      { title: '버무리고 숙성', lines: ['양념장을 고기에 버무리기', '냉장고에서 30분 숙성 (선택)'],
-        say: '양념장을 고기에 버무려 주세요. 냉장고에 30분 두면 양념이 배어 더 맛있어요. 30분 타이머 맞출까요?', offer: { seconds: 1800, label: '숙성' } },
-      { title: '파기름 내기', lines: ['팬에 식용유 2큰술 + 대파', '향이 올라올 때까지 볶기'], say: '팬에 식용유 2큰술과 대파를 넣고 파기름을 내 주세요.' },
-      { title: '고기 볶기', lines: ['양념한 고기 넣기', '중불로 약 8분, 완전히 익히기'],
-        say: '양념한 고기를 넣고 중불로 볶아 완전히 익혀 주세요. 8분 정도 걸려요. 8분 타이머 맞출까요?', offer: { seconds: 480, label: '고기' } },
-      { title: '채소 넣기', lines: ['양파·청양고추 넣기', '강불로 2분 볶고 불 끄기'],
-        say: '양파와 청양고추를 넣고 강불로 2분 볶은 뒤 불을 꺼 주세요.', offer: { seconds: 120, label: '채소' } },
-      { title: '마무리', lines: ['참기름 약간 넣어 섞기', '접시에 담고 통깨 뿌리기'], say: '불을 끄고 참기름과 통깨로 마무리해 주세요.' }
+      st('재료 손질', ['대파·청양고추 어슷썰기', '양파 1cm 두께로 썰기', '돼지고기 한입 크기로 썰기'], '재료 손질부터 시작할게요. 대파와 청양고추는 어슷하게, 양파는 1센티 두께로, 고기는 한입 크기로 썰어 주세요.', { safety: true }),
+      st('양념장 만들기', ['고추장 3큰술', '고춧가루 2큰술', '다진 마늘 1큰술', '매실액 2큰술', '간장 1큰술', '통깨·후추 약간'], '다음은 양념장이에요. 양념이 많으니 오른쪽에 띄워 둘게요. 넣은 건 말해 주시면 체크할게요.', { pinList: true }),
+      st('버무리고 숙성', ['양념장을 고기에 버무리기', '냉장고에서 30분 숙성 (선택)'], '양념장을 고기에 버무려 주세요. 냉장고에 30분 두면 양념이 배어 더 맛있어요. 30분 타이머 맞출까요?', { offer: { seconds: 1800, label: '숙성' } }),
+      st('파기름 내기', ['팬에 식용유 2큰술 + 대파', '향이 올라올 때까지 볶기'], '팬에 식용유 2큰술과 대파를 넣고 파기름을 내 주세요.'),
+      st('고기 볶기', ['양념한 고기 넣기', '중불로 약 8분, 완전히 익히기'], '양념한 고기를 넣고 중불로 볶아 완전히 익혀 주세요. 8분 정도 걸려요. 8분 타이머 맞출까요?', { offer: { seconds: 480, label: '고기' } }),
+      st('채소 넣기', ['양파·청양고추 넣기', '강불로 2분 볶고 불 끄기'], '양파와 청양고추를 넣고 강불로 2분 볶은 뒤 불을 꺼 주세요.', { offer: { seconds: 120, label: '채소' } }),
+      st('마무리', ['참기름 약간 넣어 섞기', '접시에 담고 통깨 뿌리기'], '불을 끄고 참기름과 통깨로 마무리해 주세요.')
     ] },
-  { id: 'kimchi', name: '김치찌개', source: '릴스 저장', servings: '1인분',
-    ingredients: ['김치', '돼지고기', '두부', '대파', '고춧가루'],
+  { id: 'kimchi', cat: '한식', name: '김치찌개', source: '릴스 저장', servings: '1인분', ingredients: ['김치', '돼지고기', '두부', '대파', '고춧가루'],
     steps: [
-      { title: '재료 준비', lines: ['김치 한 줌 썰기', '돼지고기 한입 크기', '두부·대파 썰기'], say: '김치와 고기, 두부와 대파를 먼저 썰어 주세요.', safety: true },
-      { title: '볶기', lines: ['냄비에 고기·김치 넣고 중불 3분'], say: '냄비에 고기와 김치를 넣고 중불로 3분 볶아 주세요.', offer: { seconds: 180, label: '볶기' } },
-      { title: '끓이기', lines: ['물 2컵, 고춧가루 1큰술', '끓으면 두부 넣고 5분'], say: '물 2컵과 고춧가루를 넣고, 끓으면 두부를 넣어 5분 더 끓여 주세요.', offer: { seconds: 300, label: '찌개' } },
-      { title: '마무리', lines: ['대파 넣고 불 끄기'], say: '대파를 넣고 불을 꺼 주세요.' }
+      st('재료 준비', ['김치 한 줌 썰기', '돼지고기 한입 크기', '두부·대파 썰기'], '김치와 고기, 두부와 대파를 먼저 썰어 주세요.', { safety: true }),
+      st('볶기', ['냄비에 고기·김치 넣고 중불 3분'], '냄비에 고기와 김치를 넣고 중불로 3분 볶아 주세요.', { offer: { seconds: 180, label: '볶기' } }),
+      st('끓이기', ['물 2컵, 고춧가루 1큰술', '끓으면 두부 넣고 5분'], '물 2컵과 고춧가루를 넣고, 끓으면 두부를 넣어 5분 더 끓여 주세요.', { offer: { seconds: 300, label: '찌개' } }),
+      st('마무리', ['대파 넣고 불 끄기'], '대파를 넣고 불을 꺼 주세요.')
+    ] },
+  { id: 'doenjang', cat: '한식', name: '된장찌개', source: '기본 레시피', servings: '1인분', ingredients: ['된장', '두부', '애호박', '양파', '대파'],
+    steps: [
+      st('재료 손질', ['애호박·양파·두부 깍둑썰기', '대파 송송 썰기'], '애호박과 양파, 두부는 깍둑썰고 대파는 송송 썰어 주세요.', { safety: true }),
+      st('된장 풀기', ['물 2컵에 된장 1.5큰술 풀기', '센불로 끓이기'], '물 2컵에 된장 1.5큰술을 풀고 끓여 주세요.'),
+      st('채소 넣기', ['애호박·양파 넣고 5분'], '끓으면 애호박과 양파를 넣고 5분 끓여 주세요. 5분 타이머 맞출까요?', { offer: { seconds: 300, label: '찌개' } }),
+      st('두부·대파', ['두부·대파 넣고 2분 더'], '두부와 대파를 넣고 2분 더 끓이면 완성이에요.', { offer: { seconds: 120, label: '마무리' } })
+    ] },
+  { id: 'eggroll', cat: '한식', name: '계란말이', source: '기본 레시피', servings: '1인분', ingredients: ['달걀', '대파', '당근'],
+    steps: [
+      st('달걀물', ['달걀 3개 + 소금 약간', '대파·당근 잘게 다져 섞기'], '달걀 3개를 풀고 소금 약간, 다진 대파와 당근을 섞어 주세요.', { safety: true }),
+      st('부치기', ['약불 팬에 기름 얇게', '달걀물 1/3 붓기'], '약불로 달군 팬에 기름을 얇게 두르고 달걀물을 3분의 1만 부어 주세요.'),
+      st('말기', ['반쯤 익으면 끝에서 말기', '남은 달걀물 붓고 반복'], '반쯤 익으면 끝에서부터 말고, 남은 달걀물을 부어 반복해 주세요.'),
+      st('썰기', ['한 김 식힌 뒤 썰기'], '한 김 식힌 뒤 썰면 모양이 예뻐요.')
+    ] },
+  { id: 'mapo', cat: '중식', name: '마파두부', source: '기본 레시피', servings: '1인분', ingredients: ['두부', '다진 돼지고기', '대파', '다진 마늘', '두반장', '전분'],
+    steps: [
+      st('두부 데치기', ['두부 깍둑썰기', '끓는 물에 2분 데치기'], '두부를 깍둑썰어 끓는 물에 2분 데쳐 주세요.', { offer: { seconds: 120, label: '두부' }, safety: true }),
+      st('볶기', ['대파·마늘 볶아 향 내기', '다진 고기 넣고 볶기'], '대파와 마늘을 볶아 향을 낸 뒤 다진 고기를 볶아 주세요.'),
+      st('소스', ['두반장 1큰술 + 물 1컵', '끓으면 두부 넣기'], '두반장 1큰술과 물 1컵을 넣고 끓으면 두부를 넣어 주세요.'),
+      st('농도', ['전분물로 농도 맞추기'], '전분물을 조금씩 넣으며 농도를 맞춰 주세요.')
+    ] },
+  { id: 'tomatoegg', cat: '중식', name: '토마토달걀볶음', source: '기본 레시피', servings: '1인분', ingredients: ['토마토', '달걀', '대파'],
+    steps: [
+      st('달걀 스크램블', ['달걀 2개 반숙으로 볶아 덜기'], '달걀 2개를 반숙으로 볶아 따로 덜어 주세요.'),
+      st('토마토 볶기', ['대파 볶다 토마토 넣고 2분'], '대파를 볶다가 토마토를 넣고 2분 볶아 주세요.', { offer: { seconds: 120, label: '토마토' } }),
+      st('합치기', ['달걀 다시 넣기', '설탕·소금 약간'], '달걀을 다시 넣고 설탕과 소금으로 간해 주세요.')
+    ] },
+  { id: 'friedrice', cat: '중식', name: '계란볶음밥', source: '기본 레시피', servings: '1인분', ingredients: ['밥', '달걀', '대파', '간장'],
+    steps: [
+      st('파기름', ['식용유 2큰술 + 대파'], '식용유에 대파를 볶아 파기름을 내 주세요.'),
+      st('달걀', ['달걀 2개 넣고 스크램블'], '달걀 2개를 넣고 스크램블해 주세요.'),
+      st('밥 볶기', ['밥 1공기 넣고 센불', '간장 1큰술 팬 가장자리로'], '밥을 넣고 센불로 볶다가 간장 1큰술을 팬 가장자리에 둘러 주세요.')
+    ] },
+  { id: 'aglio', cat: '양식', name: '알리오 올리오', source: '기본 레시피', servings: '1인분', ingredients: ['파스타면', '마늘', '페페론치노', '올리브유'],
+    steps: [
+      st('면 삶기', ['소금 넣은 물에 면 8분'], '소금을 넣은 끓는 물에 면을 8분 삶아 주세요. 8분 타이머 맞출까요?', { offer: { seconds: 480, label: '면' } }),
+      st('오일', ['올리브유 + 편마늘 약불', '페페론치노 넣기'], '올리브유에 편마늘을 약불로 볶고 페페론치노를 넣어 주세요.'),
+      st('섞기', ['면 + 면수 반 국자', '소금으로 간'], '면과 면수 반 국자를 넣고 섞은 뒤 소금으로 간해 주세요.')
+    ] },
+  { id: 'omelet', cat: '양식', name: '치즈 오믈렛', source: '기본 레시피', servings: '1인분', ingredients: ['달걀', '우유', '버터', '치즈'],
+    steps: [
+      st('달걀물', ['달걀 3개 + 우유 2큰술 + 소금'], '달걀 3개에 우유 2큰술과 소금 약간을 넣고 풀어 주세요.'),
+      st('익히기', ['버터 녹인 팬에 붓고 젓기'], '버터를 녹인 팬에 붓고 가장자리부터 저어 주세요.'),
+      st('접기', ['치즈 올리고 반으로 접기'], '치즈를 올리고 반으로 접으면 완성이에요.')
+    ] },
+  { id: 'gyudon', cat: '일식', name: '규동', source: '기본 레시피', servings: '1인분', ingredients: ['소고기', '양파', '간장', '설탕', '밥'],
+    steps: [
+      st('양파 썰기', ['양파 반 개 채 썰기'], '양파 반 개를 채 썰어 주세요.', { safety: true }),
+      st('소스', ['물 반 컵 + 간장 2큰술 + 설탕 1큰술'], '물 반 컵에 간장 2큰술, 설탕 1큰술을 넣고 끓여 주세요.'),
+      st('끓이기', ['양파 넣고 3분', '소고기 넣고 익히기'], '양파를 넣고 3분 끓인 뒤 소고기를 넣어 익혀 주세요.', { offer: { seconds: 180, label: '양파' } }),
+      st('담기', ['밥 위에 올리기'], '밥 위에 소스와 함께 올려 주세요.')
+    ] },
+  { id: 'oyako', cat: '일식', name: '오야코동', source: '기본 레시피', servings: '1인분', ingredients: ['닭다리살', '양파', '달걀', '간장', '설탕', '밥'],
+    steps: [
+      st('손질', ['닭다리살 한입 크기', '양파 채 썰기'], '닭다리살은 한입 크기로, 양파는 채 썰어 주세요.', { safety: true }),
+      st('조리기', ['소스에 닭·양파 넣고 5분'], '간장과 설탕 소스에 닭과 양파를 넣고 5분 졸여 주세요.', { offer: { seconds: 300, label: '닭' } }),
+      st('달걀', ['푼 달걀 둘러 붓고 뚜껑 30초'], '푼 달걀을 둘러 붓고 뚜껑을 덮어 30초 익혀 주세요.'),
+      st('담기', ['밥 위에 올리기'], '밥 위에 올리면 완성이에요.')
+    ] },
+  { id: 'tteok', cat: '분식', name: '떡볶이', source: '기본 레시피', servings: '1인분', ingredients: ['떡볶이떡', '어묵', '대파', '고추장', '고춧가루', '설탕'],
+    steps: [
+      st('양념 물', ['물 1.5컵 + 고추장 2 + 고춧가루 1 + 설탕 1'], '물 1.5컵에 고추장 2큰술, 고춧가루와 설탕 1큰술씩 넣고 끓여 주세요.'),
+      st('떡·어묵', ['떡·어묵 넣고 중불 7분'], '떡과 어묵을 넣고 중불로 7분 끓여 주세요.', { offer: { seconds: 420, label: '떡볶이' } }),
+      st('마무리', ['대파 넣고 졸이기'], '대파를 넣고 원하는 농도까지 졸여 주세요.')
+    ] },
+  { id: 'tunamayo', cat: '분식', name: '참치마요덮밥', source: '기본 레시피', servings: '1인분', ingredients: ['참치캔', '마요네즈', '밥', '김', '간장'],
+    steps: [
+      st('참치', ['참치 기름 빼기', '간장 1큰술에 버무리기'], '참치 기름을 빼고 간장 1큰술에 버무려 주세요.'),
+      st('담기', ['밥 위에 참치', '마요네즈 뿌리고 김 올리기'], '밥 위에 참치를 올리고 마요네즈를 뿌린 뒤 김을 올려 주세요.')
+    ] },
+  { id: 'frenchtoast', cat: '간식', name: '프렌치토스트', source: '기본 레시피', servings: '1인분', ingredients: ['식빵', '달걀', '우유', '버터', '설탕'],
+    steps: [
+      st('적시기', ['달걀 1 + 우유 3큰술', '식빵 양면 적시기'], '달걀 하나에 우유 3큰술을 섞고 식빵 양면을 적셔 주세요.'),
+      st('굽기', ['버터 녹인 약불 팬', '앞뒤 2분씩'], '버터를 녹인 약불 팬에서 앞뒤로 2분씩 구워 주세요.', { offer: { seconds: 120, label: '토스트' } }),
+      st('마무리', ['설탕 솔솔'], '설탕을 살짝 뿌리면 완성이에요.')
     ] }
 ];
-const DEFAULT_FRIDGE = [
-  { name: '돼지고기', from: '글라스' }, { name: '양파', from: '글라스' }, { name: '대파', from: '글라스' }, { name: '청양고추', from: '글라스' },
-  { name: '김치', from: '직접' }, { name: '고추장', from: '직접' }, { name: '고춧가루', from: '직접' }, { name: '다진 마늘', from: '영수증' }, { name: '간장', from: '영수증' }, { name: '설탕', from: '직접' }
-];
+const DEFAULT_FRIDGE = ['돼지고기', '양파', '대파', '청양고추', '김치', '달걀', '밥', '고추장', '고춧가루', '다진 마늘', '간장', '설탕']
+  .map((name, i) => ({ name, from: i < 4 ? '글라스' : i < 7 ? '직접' : '영수증' }));
 const SUBSTITUTES = [
   '매실액 → 설탕 1큰술 (매실액 2큰술 기준, 단맛이 강하니 적게 시작)',
   '진간장 → 국간장 반 양부터 (더 짜므로 맛보며 추가)',
   '올리고당 ↔ 설탕 (올리고당 2큰술 ≈ 설탕 1큰술)',
-  '두부 → 생략 가능', '청양고추 → 생략 가능 (덜 맵게)'
+  '두부 → 생략 가능', '청양고추 → 생략 가능 (덜 맵게)', '당근 → 생략 가능'
 ];
 
 // ================= 상태 =================
-const D = { recipes: store.get('recipes', DEFAULT_RECIPES), fridge: store.get('fridge', DEFAULT_FRIDGE),
-  history: store.get('history', []), memory: store.get('memory', []), selected: store.get('selected', 'jeyuk') };
-function saveD() { store.set('recipes', D.recipes); store.set('fridge', D.fridge); store.set('history', D.history); store.set('memory', D.memory); store.set('selected', D.selected); }
-const S = { recipe: clone(D.recipes[0]), step: -1, subs: [], checked: {}, timers: [], pendingOffer: null, history: [],
+const D = { my: store.get('my', []), fridge: store.get('fridge', DEFAULT_FRIDGE), history: store.get('history', []),
+  memory: store.get('memory', []), favs: store.get('favs', ['jeyuk', 'kimchi']), selected: store.get('selected', 'jeyuk') };
+Object.defineProperty(D, 'recipes', { get: () => D.my.concat(BUILTIN) });
+function saveD() { ['my', 'fridge', 'history', 'memory', 'favs', 'selected'].forEach(k => store.set(k, D[k])); }
+const S = { recipe: clone(BUILTIN[0]), step: -1, subs: [], checked: {}, timers: [], pendingOffer: null, history: [],
   listening: false, speaking: false, stream: null, after: null, started: false };
 
 // ================= 연동 앱 화면 =================
-let tab = 'home', pendingImport = null;
+let tab = 'home', cat = null, query = '', pendingImport = null;
 const has = n => D.fridge.some(f => f.name === n || n.includes(f.name) || f.name.includes(n));
-function missing(r) { return (r.ingredients || []).filter(i => !has(i)); }
+function missing(r) { return (r.ingredients || []).filter(i => !PANTRY.includes(i) && !has(i)); }
 function memFor(r) { return D.memory.filter(m => r.name.includes(m.recipe) || (m.recipe && m.recipe.includes(r.name.replace('엄마표 ', '')))); }
+const isFav = r => D.favs.includes(r.id);
+function statusTags(r) {
+  const miss = missing(r);
+  if (!miss.length) return '<span class="tag ok">바로 가능</span>';
+  if (miss.every(m => SUBSTITUTES.some(s => s.startsWith(m)))) return `<span class="tag ok">대체로 가능</span><span class="tag need">${esc(miss.join(', '))} 없음</span>`;
+  return `<span class="tag need">${esc(miss.slice(0, 2).join(', '))}${miss.length > 2 ? ' 외' : ''} 사면</span>`;
+}
+function recipeCard(r) {
+  const mem = memFor(r);
+  return `<div class="card rc ${r.id === D.selected ? 'sel peach' : ''}" data-pick="${esc(r.id)}">
+    <button class="fav ${isFav(r) ? 'on' : ''}" data-fav="${esc(r.id)}" aria-label="즐겨찾기">${isFav(r) ? '♥' : '♡'}</button>
+    <h3>${esc(r.name)}</h3><p>${statusTags(r)}<span class="tag">${esc(r.cat || '내 레시피')}</span>${r.mine ? '<span class="tag">내 레시피</span>' : ''}</p>
+    ${mem.length ? `<p style="margin-top:6px">지난번 기록: ${esc(mem.map(m => m.note).join(' · '))} → 반영해서 안내</p>` : ''}</div>`;
+}
+function bindCards(B) {
+  B.querySelectorAll('[data-fav]').forEach(el => el.onclick = e => { e.stopPropagation(); const id = el.dataset.fav;
+    D.favs = D.favs.includes(id) ? D.favs.filter(x => x !== id) : D.favs.concat(id); saveD(); render(); });
+  B.querySelectorAll('[data-pick]').forEach(el => el.onclick = () => { D.selected = el.dataset.pick; saveD(); render(); });
+}
+function inCat(r, c) { return c === '즐겨찾기' ? isFav(r) : c === '내 레시피' ? !!r.mine : r.cat === c; }
+function cookBar() {
+  const r = D.recipes.find(x => x.id === D.selected) || D.recipes[0];
+  return `<div class="cookbar"><div class="sel-name">선택: <b>${esc(r.name)}</b></div><button class="btn" id="sendBtn">🍳 요리 시작</button>
+    <p class="note">${store.get('glass', 'on') === 'on' ? '🕶 글라스 연결됨 · 글라스에서 “엄마표 제육 꺼내 줘”처럼 말로 불러와도 돼요.' : '글라스 없음 · 이 화면에 레시피가 단계별로 떠요.'}</p></div>`;
+}
 function render() {
   document.querySelectorAll('#appTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab || (tab === 'cook' && b.dataset.tab === 'home')));
   const B = $('appBody');
-  if (tab === 'home') {
+  if (tab === 'home' && cat) {
+    $('appTitle').textContent = (CATS.find(c => c.key === cat) || {}).icon + ' ' + cat;
+    const list = D.recipes.filter(r => inCat(r, cat)).sort((a, b) => missing(a).length - missing(b).length);
+    B.innerHTML = `<button class="btn ghost" style="width:auto;padding:6px 14px;margin-bottom:10px" id="backCat">← 전체</button>` +
+      (list.length ? list.map(recipeCard).join('') : `<p class="sub">${cat === '즐겨찾기' ? '♡를 눌러 즐겨찾기를 추가해 보세요.' : '아직 레시피가 없어요.'}</p>`) + cookBar();
+    $('backCat').onclick = () => { cat = null; render(); };
+    bindCards(B); $('sendBtn').onclick = startCooking;
+  } else if (tab === 'home') {
     $('appTitle').textContent = '오늘 뭐 먹지?';
-    const list = D.recipes.map(r => ({ r, miss: missing(r) })).sort((a, b) => a.miss.length - b.miss.length);
-    B.innerHTML = `<p class="sub">냉장고 재고 ${D.fridge.length}개 + 저장한 레시피 ${D.recipes.length}개 기준</p>` +
-      list.map(({ r, miss }) => {
-        const mem = memFor(r);
-        const status = !miss.length ? '<span class="tag ok">바로 가능</span>' :
-          miss.every(m => SUBSTITUTES.some(s => s.startsWith(m))) ? `<span class="tag ok">대체로 가능</span><span class="tag need">${esc(miss.join(', '))} 없음</span>` :
-          `<span class="tag need">${esc(miss.join(', '))}만 사면</span>`;
-        return `<div class="card ${r.id === D.selected ? 'sel peach' : ''}" data-pick="${esc(r.id)}">
-          <h3>${esc(r.name)}</h3><p>${status}<span class="tag">${esc(r.source || '내 레시피')}</span></p>
-          ${mem.length ? `<p style="margin-top:6px">지난번 기록: ${esc(mem.map(m => m.note).join(' · '))} → 반영해서 안내</p>` : ''}</div>`;
-      }).join('') +
-      `<button class="btn" id="sendBtn">🍳 요리 시작</button><p class="note">${store.get('glass', 'on') === 'on' ? '🕶 글라스 연결됨 · 글라스에 첫 단계 카드가 떠요. 글라스에서 “엄마표 제육 꺼내 줘”처럼 말로 불러와도 돼요.' : '글라스 없음 · 이 화면에 레시피가 단계별로 떠요.'}</p>`;
-    B.querySelectorAll('[data-pick]').forEach(el => el.onclick = () => { D.selected = el.dataset.pick; saveD(); render(); });
-    $('sendBtn').onclick = startCooking;
+    const q = query.trim();
+    const found = q ? D.recipes.filter(r => r.name.includes(q) || (r.ingredients || []).some(i => i.includes(q)) || (r.cat || '').includes(q)) : [];
+    const favs = D.recipes.filter(isFav);
+    const ready = D.recipes.slice().sort((a, b) => missing(a).length - missing(b).length).slice(0, 4);
+    B.innerHTML = `<input type="text" id="searchIn" class="search" placeholder="🔍 제육? 파스타? 냉장고 재료로 검색" value="${esc(q)}">` +
+      (q ? `<p class="sub" style="margin-top:10px">“${esc(q)}” 검색 결과 ${found.length}개</p>` + found.map(recipeCard).join('') :
+      `<div class="cats">${CATS.map(c => `<button class="cat" data-cat="${esc(c.key)}"><span>${c.icon}</span>${esc(c.key)}</button>`).join('')}</div>
+       <h4 class="sec">♥ 즐겨찾기</h4>
+       <div class="hscroll">${favs.length ? favs.map(r => `<div class="mini ${r.id === D.selected ? 'sel' : ''}" data-pick="${esc(r.id)}"><b>${esc(r.name)}</b><small>${missing(r).length ? esc(missing(r)[0]) + ' 없음' : '바로 가능'}</small></div>`).join('') : '<p class="sub">♡를 눌러 추가해 보세요</p>'}</div>
+       <h4 class="sec">🧊 냉장고로 지금 만들 수 있어요</h4>${ready.map(recipeCard).join('')}`) + cookBar();
+    const si = $('searchIn'); si.oninput = () => { query = si.value; const pos = si.selectionStart; render(); const n = $('searchIn'); n.focus(); n.setSelectionRange(pos, pos); };
+    B.querySelectorAll('[data-cat]').forEach(el => el.onclick = () => { cat = el.dataset.cat; render(); });
+    bindCards(B); $('sendBtn').onclick = startCooking;
   } else if (tab === 'recipes') {
     $('appTitle').textContent = '레시피 보관함';
+    const mine = D.recipes.filter(r => r.mine), favs = D.recipes.filter(isFav);
     B.innerHTML = `<p class="sub">릴스·유튜브 설명, 글·사진, 엄마 음성 메모를 같은 카드로</p>
       <div class="card"><h3>새 레시피 등록</h3>
-        <select id="srcIn" style="margin:8px 0"><option>엄마 메모</option><option>직접 입력</option><option>릴스·유튜브 설명</option></select>
+        <div class="row" style="margin:8px 0"><select id="srcIn"><option>엄마 메모</option><option>직접 입력</option><option>릴스·유튜브 설명</option></select>
+        <select id="catIn">${CATS.slice(0, 6).map(c => `<option>${c.key}</option>`).join('')}</select></div>
         <textarea id="recipeIn" placeholder="예) 엄마: 고기에 고추장 세 숟갈, 간장 대충 한 숟갈 넣고 버무려…"></textarea>
         <div class="row" style="margin-top:8px"><button class="btn ghost" id="mediaBtn">🎙/📷 녹음·사진 첨부</button><button class="btn" id="importBtn">AI로 정리</button></div>
-        <div class="note" id="importMsg"></div><div id="importOut"></div></div>` +
-      D.recipes.map(r => `<div class="card"><h3>${esc(r.name)}</h3><p><span class="tag">${esc(r.source || '')}</span>${r.steps.length}단계 · 재료 ${(r.ingredients || []).length}개</p>
-        <p style="margin-top:6px">${esc(r.steps.map(s => s.title).join(' → '))}</p></div>`).join('');
+        <div class="note" id="importMsg"></div><div id="importOut"></div></div>
+      <h4 class="sec">📒 내가 등록한 레시피 (${mine.length})</h4>${mine.map(recipeCard).join('') || '<p class="sub">아직 없어요</p>'}
+      <h4 class="sec">♥ 즐겨찾기 (${favs.length})</h4>${favs.map(recipeCard).join('') || '<p class="sub">♡를 눌러 추가해 보세요</p>'}`;
     $('importBtn').onclick = importRecipe;
     $('mediaBtn').onclick = () => { $('mediaPick').value = ''; $('mediaPick').click(); };
+    bindCards(B);
   } else if (tab === 'fridge') {
     $('appTitle').textContent = '냉장고';
     B.innerHTML = `<p class="sub">글라스로 본 재료 · 영수증 · 직접 입력이 모여요. 요리하면 쓴 재료는 자동으로 빠져요.</p>
@@ -251,7 +372,7 @@ function render() {
     $('appTitle').textContent = r.name;
     const miss = missing(r);
     B.innerHTML = `<p class="sub">글라스 없이 휴대폰으로 보기 · ${r.steps.length}단계${miss.length ? ' · 없는 재료: ' + esc(miss.join(', ')) : ''}</p>` +
-      r.steps.map((st, k) => `<div class="card ${k === i ? 'peach sel' : ''}" data-step="${k}"><h3>${k + 1}. ${esc(st.title)}</h3>${st.lines.map(l => `<p>· ${esc(l)}</p>`).join('')}</div>`).join('') +
+      r.steps.map((s, k) => `<div class="card ${k === i ? 'peach sel' : ''}" data-step="${k}"><h3>${k + 1}. ${esc(s.title)}</h3>${s.lines.map(l => `<p>· ${esc(l)}</p>`).join('')}</div>`).join('') +
       `<div class="row" style="position:sticky;bottom:0;padding-top:8px;background:var(--cream)"><button class="btn ghost" id="prevBtn">이전</button><button class="btn" id="nextBtn">${i >= r.steps.length - 1 ? '완성' : '다음'}</button></div>`;
     B.querySelectorAll('[data-step]').forEach(el => el.onclick = () => { S.step = +el.dataset.step; render(); });
     $('prevBtn').onclick = () => { S.step = Math.max(0, i - 1); render(); };
@@ -265,7 +386,7 @@ function render() {
     B.querySelectorAll('[data-mdel]').forEach(el => el.onclick = () => { D.memory.splice(+el.dataset.mdel, 1); saveD(); render(); });
   }
 }
-document.querySelectorAll('#appTabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
+document.querySelectorAll('#appTabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; if (tab === 'home') cat = null; render(); });
 
 // 미디어(녹음·사진) 첨부 → 레시피 정리
 let mediaData = null;
@@ -280,12 +401,12 @@ async function importRecipe() {
   $('importMsg').textContent = 'AI가 단계 카드로 정리하는 중…';
   try {
     const r = await makeRecipe(text || '첨부한 녹음·사진의 레시피를 정리해 줘.', mediaData);
-    r.id = 'r' + Date.now(); r.source = $('srcIn').value; pendingImport = r;
+    r.id = 'r' + Date.now(); r.source = $('srcIn').value; r.cat = $('catIn').value; r.mine = true; pendingImport = r;
     $('importMsg').textContent = '';
     $('importOut').innerHTML = `<div class="qa"><b>${esc(r.name)}</b> · ${r.steps.length}단계<br>${esc(r.steps.map(s => s.title).join(' → '))}<br>재료: ${esc((r.ingredients || []).join(', '))}</div>` +
       (r.questions && r.questions.length ? `<div class="qa">AI 확인: ${r.questions.map(q => esc(q)).join('<br>')}</div>` : '') +
       `<div class="row" style="margin-top:8px"><button class="btn" id="keepBtn">이대로 보관함에 저장</button></div>`;
-    $('keepBtn').onclick = () => { D.recipes.unshift(pendingImport); D.selected = pendingImport.id; saveD(); mediaData = null; pendingImport = null; tab = 'home'; render(); };
+    $('keepBtn').onclick = () => { D.my.unshift(pendingImport); D.selected = pendingImport.id; D.favs = D.favs.concat(pendingImport.id); saveD(); mediaData = null; pendingImport = null; tab = 'home'; cat = null; render(); };
   } catch (e) { $('importMsg').textContent = '실패: ' + e.message; }
 }
 async function scanFridgePhoto() {
@@ -469,13 +590,22 @@ function checkItem(n) {
 }
 function findRecipe(n) {
   const c = n.replace(/\s/g, '');
-  return D.recipes.find(r => { const base = r.name.replace(/엄마표\s*/, '').replace(/\s/g, ''); return c.includes(base) || c.includes(base.slice(0, 2)) && base.length >= 2; });
+  let best = null, score = 0;
+  D.recipes.forEach(r => { const full = r.name.replace(/\s/g, ''), base = full.replace(/^엄마표/, '');
+    const sc = c.includes(full) ? 3 : c.includes(base) ? 2 : (base.length >= 2 && c.includes(base.slice(0, 2))) ? 1 : 0;
+    if (sc > score) { score = sc; best = r; } });
+  return best;
 }
 function handleLocal(t) {
   const n = t.replace(/[.,!?~]/g, '').trim();
+  if (/즐겨\s*찾기/.test(n)) {
+    const fv = D.recipes.filter(isFav);
+    showCard({ label: '연동 앱 · 즐겨찾기', title: '♥ 즐겨찾기 레시피', lines: fv.length ? fv.map(r => `${r.name} · ${missing(r).length ? missing(r).join(', ') + ' 없음' : '바로 가능'}`) : ['아직 없어요'] }, { ms: 8000 });
+    speak(fv.length ? `즐겨찾기에 ${fv.map(r => r.name).join(', ')}가 있어요. 무엇을 할까요?` : '즐겨찾기한 레시피가 아직 없어요.'); return true;
+  }
   if (/(저장(한|된)?\s*레시피|레시피\s*(목록|뭐\s*있))/.test(n)) {
-    showCard({ label: '연동 앱 보관함', title: '저장한 레시피', lines: D.recipes.map(r => `${r.name} · ${missing(r).length ? missing(r).join(', ') + ' 없음' : '바로 가능'}`) }, { ms: 8000 });
-    speak(`${D.recipes.map(r => r.name).join(', ')}가 있어요. 무엇을 할까요?`); return true;
+    showCard({ label: '연동 앱 보관함', title: '저장한 레시피', lines: D.recipes.slice().sort((a, b) => isFav(b) - isFav(a)).slice(0, 6).map(r => `${r.name} · ${missing(r).length ? missing(r).join(', ') + ' 없음' : '바로 가능'}`) }, { ms: 8000 });
+    speak(`${D.recipes.length}개가 있어요. 즐겨찾기한 것부터 말씀드리면 ${D.recipes.filter(isFav).map(r => r.name).join(', ') || '없어요'}. 무엇을 할까요?`); return true;
   }
   if (/(꺼내|불러|하자|할래|할게|만들자|해\s*줘|시작)/.test(n) && !/타이머/.test(n)) {
     const r = findRecipe(n);
@@ -567,7 +697,7 @@ function applyActions(out) {
 async function chooseMenu(menu) {
   const key = menu.replace(/\s/g, '');
   let r = D.recipes.find(x => x.name.replace(/\s/g, '').includes(key) || key.includes(x.name.replace(/\s|엄마표/g, '')));
-  if (!r) { try { setStatus('think', '레시피 만드는 중'); r = await makeRecipe(`${menu} 1인분 레시피. 보유 재료: ${D.fridge.map(f => f.name).join(', ')}`); r.id = 'r' + Date.now(); r.source = 'AI 생성(미검수)'; D.recipes.push(r); saveD(); }
+  if (!r) { try { setStatus('think', '레시피 만드는 중'); r = await makeRecipe(`${menu} 1인분 레시피. 보유 재료: ${D.fridge.map(f => f.name).join(', ')}`); r.id = 'r' + Date.now(); r.source = 'AI 생성(미검수)'; r.mine = true; r.cat = r.cat || '내 레시피'; D.my.push(r); saveD(); }
     catch (e) { speak('레시피를 만들지 못했어요. ' + e.message); return; } }
   S.recipe = clone(r); S.step = -1; S.subs = []; S.checked = {}; D.selected = r.id; saveD();
   S.after = () => gotoStep(0);
@@ -605,7 +735,7 @@ $('textIn').addEventListener('keydown', e => { if (e.key === 'Enter') { const v 
 function openSettings() { $('glassIn').value = store.get('glass', 'on'); $('keyIn').value = store.get('key', ''); $('modelIn').value = store.get('model', 'gemini-3.1-flash-lite'); $('bgIn').value = store.get('bg', 'black'); $('ttsIn').value = store.get('tts', 'on'); $('settings').style.display = 'block'; }
 $('appSet').onclick = openSettings;
 $('saveBtn').onclick = () => { store.set('glass', $('glassIn').value); render(); store.set('key', $('keyIn').value.trim()); store.set('model', $('modelIn').value.trim() || 'gemini-3.1-flash-lite'); store.set('bg', $('bgIn').value); store.set('tts', $('ttsIn').value); applyBg(); $('settings').style.display = 'none'; };
-$('resetBtn').onclick = () => { D.recipes = clone(DEFAULT_RECIPES); D.fridge = clone(DEFAULT_FRIDGE); D.history = []; D.memory = []; D.selected = 'jeyuk'; saveD(); $('settings').style.display = 'none'; tab = 'home'; render(); };
+$('resetBtn').onclick = () => { D.my = []; D.fridge = clone(DEFAULT_FRIDGE); D.history = []; D.memory = []; D.favs = ['jeyuk', 'kimchi']; D.selected = 'jeyuk'; saveD(); cat = null; query = ''; $('settings').style.display = 'none'; tab = 'home'; render(); };
 let dimT = null; function wake() { $('controls').classList.remove('dim'); clearTimeout(dimT); dimT = setTimeout(() => $('controls').classList.add('dim'), 6000); }
 ['touchstart', 'mousemove', 'keydown'].forEach(ev => document.addEventListener(ev, wake, { passive: true })); wake();
 render();
