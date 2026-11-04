@@ -69,6 +69,9 @@
   #status.listen .dot { background:var(--mint); }
   #status.think .dot { background:#F2C46D; }
   #status.cam .dot { background:#FF5A4E; }
+  #stepChip { position:absolute; left:18px; top:calc(env(safe-area-inset-top) + 66px); font-size:15px; max-width:70vw; opacity:0; transition:opacity .4s; }
+  #stepChip.show { opacity:1; }
+  #stepChip b { color:var(--mint); }
   #timers { position:absolute; right:18px; top:calc(env(safe-area-inset-top) + 16px); display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
   .timer { flex-direction:column; align-items:flex-start; gap:0; border-radius:16px; padding:8px 16px; min-width:120px; }
   .timer small { color:var(--mint); font-size:13px; font-weight:700; }
@@ -126,6 +129,7 @@
 <div id="hud">
   <div id="status" class="chip"><span class="dot"></span><span id="statusText">대기</span></div>
   <div id="timers"></div>
+  <div id="stepChip" class="chip"></div>
   <div id="card"><div id="cardLabel"></div><div id="cardTitle"></div><div id="cardLines"></div><div id="cardPin">고정됨 · “숨겨” 하면 사라져요</div></div>
   <div id="say"></div>
   <div id="heard"></div>
@@ -287,7 +291,7 @@ const D = { my: store.get('my', []), fridge: store.get('fridge', DEFAULT_FRIDGE)
 Object.defineProperty(D, 'recipes', { get: () => D.my.concat(BUILTIN) });
 function saveD() { ['my', 'fridge', 'history', 'memory', 'favs', 'selected'].forEach(k => store.set(k, D[k])); }
 const S = { recipe: clone(BUILTIN[0]), step: -1, subs: [], checked: {}, timers: [], pendingOffer: null, history: [],
-  listening: false, speaking: false, stream: null, after: null, started: false };
+  listening: false, speaking: false, stream: null, after: null, started: false, stepSeq: 0 };
 
 // ================= 연동 앱 화면 =================
 let tab = 'home', cat = null, query = '', pendingImport = null;
@@ -426,11 +430,11 @@ function startCooking() {
   const r = D.recipes.find(x => x.id === D.selected) || D.recipes[0];
   S.recipe = clone(r); S.step = 0; S.subs = []; S.checked = {}; tab = 'cook'; render();
 }
-function loadRecipe(r) { S.recipe = clone(r); S.step = -1; S.subs = []; S.checked = {}; S.history = []; S.pendingOffer = null; D.selected = r.id; saveD(); }
+function loadRecipe(r) { $('stepChip').classList.remove('show'); S.recipe = clone(r); S.step = -1; S.subs = []; S.checked = {}; S.history = []; S.pendingOffer = null; D.selected = r.id; saveD(); }
 // 글라스로 보내기 / 앱으로 돌아오기
 async function sendToGlass() {
   const r = D.recipes.find(x => x.id === D.selected) || D.recipes[0];
-  S.recipe = clone(r); S.step = -1; S.subs = []; S.checked = {}; S.history = []; S.pendingOffer = null;
+  S.recipe = clone(r); S.step = -1; S.subs = []; S.checked = {}; S.history = []; S.pendingOffer = null; $('stepChip').classList.remove('show');
   $('sendText').textContent = `“${r.name}”을(를) 글라스로 보내는 중…`; $('sendOverlay').style.display = 'flex';
   try { speechSynthesis && speechSynthesis.getVoices(); } catch (e) {}
   if (!S.started) { await initMic(); initRec(); await initCamera(); S.started = true; } else applyBg();
@@ -573,9 +577,24 @@ function fmtDur(s) { const m = Math.floor(s / 60), r = s % 60; return ((m ? m + 
 const YES = /^(응|네|넵|예|어|그래|좋아|오케이|ㅇㅇ|해\s*줘|맞춰\s*줘|부탁해)/;
 const NO = /^(아니|괜찮아|됐어|안\s*해)/;
 const NEEDS_IMAGE = /(이거|이걸|이것|요거|이\s*정도|이만큼|봐\s*줘|보여\s*줄게|냉장고|냉털|뭐\s*만들|뭐\s*해\s*먹|졸았|익었|다\s*익|색\s*깔|이\s*양)/;
+function updateChip() {
+  const c = $('stepChip'), st = S.recipe.steps[S.step];
+  if (!st || S.step < 0) { c.classList.remove('show'); return; }
+  const nx = S.recipe.steps[S.step + 1];
+  c.innerHTML = `<b>${String(S.step + 1).padStart(2, '0')}</b> ${esc(st.title)}${nx ? ' · 다음 ' + esc(nx.title) : ''}`;
+  c.classList.add('show');
+}
 function gotoStep(i, opts) {
   S.step = Math.max(0, Math.min(i, S.recipe.steps.length - 1)); const st = S.recipe.steps[S.step];
-  S.pendingOffer = st.offer || null; stepCard(S.step, opts); return speak(st.say);
+  S.pendingOffer = st.offer || null; updateChip();
+  const pin = st.pinList || isPinned();
+  // 음성으로 안내하는 동안 요약 카드를 띄워 두고, 말이 끝나면 몇 초 뒤 작은 단계 표시만 남김
+  stepCard(S.step, opts || { ms: 0, pin });
+  const mySeq = ++S.stepSeq;
+  return speak(st.say).then(() => {
+    if (pin || isPinned()) return;
+    setTimeout(() => { if (S.stepSeq === mySeq && !isPinned()) hideCard(); }, st.safety ? 2500 : 5000);
+  });
 }
 function checkItem(n) {
   if (S.step < 0) return false; const st = S.recipe.steps[S.step];
@@ -631,7 +650,7 @@ function handleLocal(t) {
   if (/(띄워|고정|붙여)/.test(n)) { if (S.step < 0) S.step = 0; stepCard(S.step, { pin: true }); speak('오른쪽에 띄워 둘게요.'); return true; }
   if (/(숨겨|닫아|치워|내려)/.test(n)) { hideCard(); return true; }
   if (/(레시피\s*보여|다음\s*(뭐|모)|뭐\s*하면\s*돼|지금\s*뭐|다시\s*보여|다시\s*말해)/.test(n) && S.step >= 0) { stepCard(S.step, { ms: 6000, pin: isPinned() }); speak(S.recipe.steps[S.step].say); return true; }
-  if (/^완성/.test(n)) { hideCard(); finishCooking(); speak('맛있게 드세요! 쓴 재료는 냉장고에서 뺐어요. 맛이 어땠는지 말해 주시면 다음에 반영할게요.'); S.step = S.recipe.steps.length; return true; }
+  if (/^완성/.test(n)) { hideCard(); S.step = S.recipe.steps.length; updateChip(); finishCooking(); speak('맛있게 드세요! 쓴 재료는 냉장고에서 뺐어요. 맛이 어땠는지 말해 주시면 다음에 반영할게요.'); S.step = S.recipe.steps.length; return true; }
   if (/요리\s*조리\s*(켜|시작)/.test(n)) { speak('좋은 아침이에요. 오늘은 무슨 요리를 같이 해 볼까요?'); return true; }
   return false;
 }
