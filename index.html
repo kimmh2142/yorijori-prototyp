@@ -52,8 +52,9 @@
   .mini small { color:var(--muted); font-size:12px; }
   .rc { position:relative; padding-right:48px; }
   .fav { position:absolute; right:10px; top:10px; background:none; border:0; font-size:22px; color:var(--red); }
-  .cookbar { position:sticky; bottom:0; background:var(--cream); padding-top:10px; }
-  .sel-name { font-size:13px; color:var(--muted); margin-bottom:6px; }
+  .cookbar { position:sticky; bottom:0; background:var(--cream); padding:10px 0 4px; display:flex; gap:10px; align-items:center; border-top:1px solid var(--border); margin-top:12px; }
+  .cookbar .btn { width:auto; padding:12px 22px; flex:0 0 auto; }
+  .sel-name { flex:1; min-width:0; font-size:15px; color:var(--dark); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .note { font-size:12px; color:var(--muted); line-height:1.5; margin-top:8px; }
   .qa { background:var(--yel); border-radius:12px; padding:10px 12px; font-size:13px; margin-top:8px; line-height:1.5; }
   #sendOverlay { position:fixed; inset:0; background:rgba(20,24,22,.92); color:var(--ink); z-index:20; display:none; align-items:center; justify-content:center; flex-direction:column; gap:10px; font-size:18px; }
@@ -304,7 +305,7 @@ function recipeCard(r) {
   const mem = memFor(r);
   return `<div class="card rc ${r.id === D.selected ? 'sel peach' : ''}" data-pick="${esc(r.id)}">
     <button class="fav ${isFav(r) ? 'on' : ''}" data-fav="${esc(r.id)}" aria-label="즐겨찾기">${isFav(r) ? '♥' : '♡'}</button>
-    <h3>${esc(r.name)}</h3><p>${statusTags(r)}<span class="tag">${esc(r.cat || '내 레시피')}</span>${r.mine ? '<span class="tag">내 레시피</span>' : ''}</p>
+    <h3>${esc(r.name)}</h3>
     ${mem.length ? `<p style="margin-top:6px">지난번 기록: ${esc(mem.map(m => m.note).join(' · '))} → 반영해서 안내</p>` : ''}</div>`;
 }
 function bindCards(B) {
@@ -315,8 +316,7 @@ function bindCards(B) {
 function inCat(r, c) { return c === '즐겨찾기' ? isFav(r) : c === '내 레시피' ? !!r.mine : r.cat === c; }
 function cookBar() {
   const r = D.recipes.find(x => x.id === D.selected) || D.recipes[0];
-  return `<div class="cookbar"><div class="sel-name">선택: <b>${esc(r.name)}</b></div><button class="btn" id="sendBtn">🍳 요리 시작</button>
-    <p class="note">${store.get('glass', 'on') === 'on' ? '🕶 글라스 연결됨 · 글라스에서 “엄마표 제육 꺼내 줘”처럼 말로 불러와도 돼요.' : '글라스 없음 · 이 화면에 레시피가 단계별로 떠요.'}</p></div>`;
+  return `<div class="cookbar"><div class="sel-name">${store.get('glass', 'on') === 'on' ? '🕶' : '📱'} <b>${esc(r.name)}</b></div><button class="btn" id="sendBtn">요리 시작</button></div>`;
 }
 function render() {
   document.querySelectorAll('#appTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab || (tab === 'cook' && b.dataset.tab === 'home')));
@@ -338,8 +338,8 @@ function render() {
       (q ? `<p class="sub" style="margin-top:10px">“${esc(q)}” 검색 결과 ${found.length}개</p>` + found.map(recipeCard).join('') :
       `<div class="cats">${CATS.map(c => `<button class="cat" data-cat="${esc(c.key)}"><span>${c.icon}</span>${esc(c.key)}</button>`).join('')}</div>
        <h4 class="sec">♥ 즐겨찾기</h4>
-       <div class="hscroll">${favs.length ? favs.map(r => `<div class="mini ${r.id === D.selected ? 'sel' : ''}" data-pick="${esc(r.id)}"><b>${esc(r.name)}</b><small>${missing(r).length ? esc(missing(r)[0]) + ' 없음' : '바로 가능'}</small></div>`).join('') : '<p class="sub">♡를 눌러 추가해 보세요</p>'}</div>
-       <h4 class="sec">🧊 냉장고로 지금 만들 수 있어요</h4>${ready.map(recipeCard).join('')}`) + cookBar();
+       <div class="hscroll">${favs.length ? favs.map(r => `<div class="mini ${r.id === D.selected ? 'sel' : ''}" data-pick="${esc(r.id)}"><b>${esc(r.name)}</b></div>`).join('') : '<p class="sub">♡를 눌러 추가해 보세요</p>'}</div>
+       <h4 class="sec">🍳 추천 레시피</h4>${ready.map(recipeCard).join('')}`) + cookBar();
     const si = $('searchIn'); si.oninput = () => { query = si.value; const pos = si.selectionStart; render(); const n = $('searchIn'); n.focus(); n.setSelectionRange(pos, pos); };
     B.querySelectorAll('[data-cat]').forEach(el => el.onclick = () => { cat = el.dataset.cat; render(); });
     bindCards(B); $('sendBtn').onclick = startCooking;
@@ -600,11 +600,11 @@ function handleLocal(t) {
   const n = t.replace(/[.,!?~]/g, '').trim();
   if (/즐겨\s*찾기/.test(n)) {
     const fv = D.recipes.filter(isFav);
-    showCard({ label: '연동 앱 · 즐겨찾기', title: '♥ 즐겨찾기 레시피', lines: fv.length ? fv.map(r => `${r.name} · ${missing(r).length ? missing(r).join(', ') + ' 없음' : '바로 가능'}`) : ['아직 없어요'] }, { ms: 8000 });
+    showCard({ label: '연동 앱 · 즐겨찾기', title: '♥ 즐겨찾기 레시피', lines: fv.length ? fv.map(r => r.name) : ['아직 없어요'] }, { ms: 8000 });
     speak(fv.length ? `즐겨찾기에 ${fv.map(r => r.name).join(', ')}가 있어요. 무엇을 할까요?` : '즐겨찾기한 레시피가 아직 없어요.'); return true;
   }
   if (/(저장(한|된)?\s*레시피|레시피\s*(목록|뭐\s*있))/.test(n)) {
-    showCard({ label: '연동 앱 보관함', title: '저장한 레시피', lines: D.recipes.slice().sort((a, b) => isFav(b) - isFav(a)).slice(0, 6).map(r => `${r.name} · ${missing(r).length ? missing(r).join(', ') + ' 없음' : '바로 가능'}`) }, { ms: 8000 });
+    showCard({ label: '연동 앱 보관함', title: '저장한 레시피', lines: D.recipes.slice().sort((a, b) => isFav(b) - isFav(a)).slice(0, 6).map(r => r.name) }, { ms: 8000 });
     speak(`${D.recipes.length}개가 있어요. 즐겨찾기한 것부터 말씀드리면 ${D.recipes.filter(isFav).map(r => r.name).join(', ') || '없어요'}. 무엇을 할까요?`); return true;
   }
   if (/(꺼내|불러|하자|할래|할게|만들자|해\s*줘|시작)/.test(n) && !/타이머/.test(n)) {
