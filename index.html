@@ -75,13 +75,16 @@
   #timers { position:absolute; right:18px; top:calc(env(safe-area-inset-top) + 16px); display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
   .timer { flex-direction:column; align-items:flex-start; gap:0; border-radius:16px; padding:8px 16px; min-width:120px; }
   .timer small { color:var(--mint); font-size:13px; font-weight:700; }
-  .timer b { font-size:28px; font-variant-numeric:tabular-nums; }
+  .timer b { font-size:34px; font-variant-numeric:tabular-nums; }
+  .timer.run { border-color:var(--mint); }
   .timer.done { border-color:#F2A07F; }
   #card { position:absolute; left:50%; top:22%; transform:translate(-50%, 10px); width:min(560px, 88vw);
     background:var(--panel); border:1.5px solid var(--line); border-radius:22px; padding:20px 24px;
     backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); opacity:0; transition:opacity .35s, transform .35s; }
   #card.show { opacity:1; transform:translate(-50%, 0); }
-  #card.pinned { left:auto; right:18px; top:calc(env(safe-area-inset-top) + 120px); transform:none; width:min(300px, 72vw); padding:14px 18px; }
+  #card.offer { pointer-events:auto; }
+  #cardLines div.offer { color:#F2C46D; margin-top:6px; }
+  #card.pinned { left:auto; right:18px; top:calc(env(safe-area-inset-top) + var(--pinTop, 120px)); transform:none; width:min(300px, 72vw); padding:14px 18px; }
   #card.pinned #cardTitle { font-size:20px; }
   #card.pinned #cardLines { font-size:15px; }
   #cardLabel { color:var(--mint); font-size:15px; font-weight:700; margin-bottom:6px; }
@@ -486,13 +489,26 @@ function showCard({ label = '', title = '', lines = [], next = '', done = [] }, 
   const c = $('card'); c.classList.toggle('pinned', pin); c.classList.add('show');
   clearTimeout(cardTimer); if (!pin && ms > 0) cardTimer = setTimeout(hideCard, ms);
 }
+function markOffer() {
+  const c = $('card'); const box = $('cardLines'); box.querySelectorAll('.offer').forEach(x => x.remove());
+  const o = S.pendingOffer; c.classList.toggle('offer', !!o);
+  if (o) { const d = document.createElement('div'); d.className = 'offer'; d.textContent = `⏱ ${o.label} ${fmtDur(o.seconds)} 타이머 · “응” 하거나 카드를 탭`; box.appendChild(d); }
+}
+function acceptOffer() {
+  const o = S.pendingOffer; if (!o) return false; S.pendingOffer = null; startTimer(o.seconds, o.label); markOffer();
+  showCard({ label: '타이머 시작', title: `⏱ ${o.label} ${fmtDur(o.seconds)}`, lines: ['오른쪽 위에 계속 보여요', '“몇 분 남았어?” 하면 알려줘요'] }, { ms: 4000 });
+  setTimeout(() => { if (S.step >= 0 && S.step < S.recipe.steps.length) stepCard(S.step, { ms: 0, pin: isPinned() || !!S.recipe.steps[S.step].pinList }); }, 4200);
+  speak(`${o.label} 타이머 ${fmtDur(o.seconds)} 시작할게요.`); return true;
+}
+$('card').addEventListener('click', () => { if (S.pendingOffer) acceptOffer(); });
 function hideCard() { clearTimeout(cardTimer); $('card').classList.remove('show'); setTimeout(() => { if (!$('card').classList.contains('show')) $('card').classList.remove('pinned'); }, 400); }
 function isPinned() { return $('card').classList.contains('pinned') && $('card').classList.contains('show'); }
 function stepCard(i, opts) {
   const st = S.recipe.steps[i]; if (!st) return;
   const nx = S.recipe.steps[i + 1]; const done = st.lines.map((_, k) => !!(S.checked[i] && S.checked[i][k]));
   showCard({ label: `${String(i + 1).padStart(2, '0')} / ${String(S.recipe.steps.length).padStart(2, '0')} · ${S.recipe.name}`, title: st.title, lines: st.lines, next: nx ? nx.title : '', done },
-    opts || { ms: st.safety ? 3500 : 6000, pin: st.pinList || isPinned() });
+    opts || { ms: st.safety ? 3500 : 6000, pin: !!st.pinList || !!S.userPinned });
+  markOffer();
 }
 let sayTimer = null;
 function showSay(t) { $('say').textContent = t; $('say').classList.add('show'); clearTimeout(sayTimer); sayTimer = setTimeout(() => $('say').classList.remove('show'), Math.max(3500, t.length * 120)); }
@@ -514,13 +530,19 @@ function speak(text) {
   });
 }
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, recActive = false;
+let rec = null, recActive = false, quickDone = false;
 function initRec() {
   if (!SR) { $('heard').textContent = '이 브라우저는 음성 인식을 지원하지 않아요. 아래 입력창을 쓰세요.'; return; }
   rec = new SR(); rec.lang = 'ko-KR'; rec.interimResults = true; rec.continuous = false;
   rec.onresult = e => { let fin = '', interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) fin += t; else interim += t; }
-    $('heard').textContent = '“' + (fin || interim) + '”'; if (fin.trim()) handle(fin.trim()); };
+    $('heard').textContent = '“' + (fin || interim) + '”';
+    const quick = (interim || fin).replace(/[.,!?~\s]/g, '');
+    if (!quickDone && /^(다음|다음단계|다음거|넘겨|넥스트|이전|이전단계)$/.test(quick)) {
+      quickDone = true; try { rec.abort(); } catch (x) {} /^(이전)/.test(quick) ? prevStep() : (S.step < 0 ? gotoStep(0) : nextStep()); return;
+    }
+    if (fin.trim() && !quickDone) handle(fin.trim()); };
+  rec.onstart = () => { quickDone = false; };
   rec.onend = () => { recActive = false; if (S.listening && !S.speaking) setTimeout(startRec, 250); };
   rec.onerror = e => { recActive = false;
     const why = { 'not-allowed': '마이크 권한이 막혀 있어요 (주소창 자물쇠 → 권한 → 마이크 허용)', 'service-not-allowed': '이 브라우저에서는 음성 인식을 쓸 수 없어요 (크롬으로 열어 주세요)', 'audio-capture': '마이크를 찾지 못했어요', 'network': '음성 인식 서버에 연결하지 못했어요 (인터넷 확인)' }[e.error];
@@ -565,8 +587,9 @@ async function snap() { setStatus('cam', '촬영 중'); let b = grabFrame(); awa
 function startTimer(seconds, label) { S.timers.push({ id: Date.now() + Math.random(), label: label || '타이머', end: Date.now() + seconds * 1000, done: false }); renderTimers(); }
 function renderTimers() {
   const box = $('timers'); box.innerHTML = '';
+  document.documentElement.style.setProperty('--pinTop', (S.timers.length ? 110 + S.timers.length * 92 : 120) + 'px');
   S.timers.forEach(t => { const left = Math.max(0, Math.round((t.end - Date.now()) / 1000));
-    const d = document.createElement('div'); d.className = 'chip timer' + (t.done ? ' done' : '');
+    const d = document.createElement('div'); d.className = 'chip timer' + (t.done ? ' done' : ' run');
     d.innerHTML = `<small></small><b>${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}</b>`;
     d.querySelector('small').textContent = t.label + (t.done ? ' · 끝' : ''); box.appendChild(d); });
 }
@@ -586,7 +609,7 @@ function parseDuration(t) {
   return found ? total : 0;
 }
 function fmtDur(s) { const m = Math.floor(s / 60), r = s % 60; return ((m ? m + '분' : '') + (r ? ' ' + r + '초' : '')).trim() || '0초'; }
-const YES = /^(응|네|넵|예|어|그래|좋아|오케이|ㅇㅇ|해\s*줘|맞춰\s*줘|부탁해)/;
+const YES = /^(응|웅|네|넵|예|어|그래|좋아|오케이|ㅇㅋ|ㅇㅇ|해\s*줘|맞춰|켜|시작|부탁|타이머|콜)/;
 const NO = /^(아니|괜찮아|됐어|안\s*해)/;
 const NEEDS_IMAGE = /(이거|이걸|이것|요거|이\s*정도|이만큼|봐\s*줘|보여\s*줄게|냉장고|냉털|뭐\s*만들|뭐\s*해\s*먹|졸았|익었|다\s*익|색\s*깔|이\s*양)/;
 function updateChip() {
@@ -599,7 +622,7 @@ function updateChip() {
 function gotoStep(i, opts) {
   S.step = Math.max(0, Math.min(i, S.recipe.steps.length - 1)); const st = S.recipe.steps[S.step];
   S.pendingOffer = st.offer || null; updateChip();
-  const pin = st.pinList || isPinned();
+  const pin = !!st.pinList || !!S.userPinned;
   // 음성으로 안내하는 동안 요약 카드를 띄워 두고, 말이 끝나면 몇 초 뒤 작은 단계 표시만 남김
   stepCard(S.step, opts || { ms: 0, pin });
   const mySeq = ++S.stepSeq;
@@ -608,6 +631,24 @@ function gotoStep(i, opts) {
     setTimeout(() => { if (S.stepSeq === mySeq && !isPinned()) hideCard(); }, st.safety ? 4000 : 8000);
   });
 }
+function nextStep() {
+  if (S.step >= S.recipe.steps.length - 1) { speak('마지막 단계예요. 완성되면 “완성”이라고 말해 주세요.'); return; }
+  try { speechSynthesis.cancel(); } catch (e) {}
+  gotoStep(S.step + 1);
+}
+function prevStep() { if (S.step <= 0) return; try { speechSynthesis.cancel(); } catch (e) {} gotoStep(S.step - 1); }
+const hudOn = () => $('app').classList.contains('hidden') && $('settings').style.display !== 'block';
+document.addEventListener('keydown', e => {
+  if (!hudOn() || e.target === $('textIn')) return;
+  if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); nextStep(); }
+  else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); prevStep(); }
+});
+let swX = null, swY = null;
+document.addEventListener('touchstart', e => { if (!hudOn() || e.target.closest('#controls')) { swX = null; return; } swX = e.touches[0].clientX; swY = e.touches[0].clientY; }, { passive: true });
+document.addEventListener('touchend', e => {
+  if (swX === null) return; const t = e.changedTouches[0]; const dx = t.clientX - swX, dy = t.clientY - swY; swX = null;
+  if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) { dx < 0 ? nextStep() : prevStep(); }
+}, { passive: true });
 function checkItem(n) {
   if (S.step < 0) return false; const st = S.recipe.steps[S.step];
   if (!/(넣었|넣음|했어|완료|체크)/.test(n)) return false;
@@ -667,7 +708,7 @@ function handleLocal(t) {
       return true;
     }
   }
-  if (S.pendingOffer && n.length <= 10 && YES.test(n)) { const o = S.pendingOffer; S.pendingOffer = null; startTimer(o.seconds, o.label); speak(`${o.label} 타이머 ${fmtDur(o.seconds)} 시작할게요.`); return true; }
+  if (S.pendingOffer && ((n.length <= 12 && YES.test(n)) || (/타이머/.test(n) && !parseDuration(n)))) return acceptOffer();
   if (S.pendingOffer && n.length <= 10 && NO.test(n)) { S.pendingOffer = null; speak('알겠어요. 필요하면 말씀해 주세요.'); return true; }
   if (/타이머\s*(꺼|끄|취소|없애)/.test(n)) { S.timers = []; renderTimers(); speak('타이머를 껐어요.'); return true; }
   if (/타이머/.test(n) && parseDuration(n)) { const sec = parseDuration(n); const label = /여기|팬/.test(n) ? '팬' : /냄비/.test(n) ? '냄비' : (S.recipe.steps[S.step] || {}).title || '타이머'; startTimer(sec, label); speak(`${fmtDur(sec)} 타이머 시작할게요.`); return true; }
@@ -676,12 +717,11 @@ function handleLocal(t) {
   if (checkItem(n)) return true;
   const short = n.length <= 14 && !NEEDS_IMAGE.test(n) && !/[?？]/.test(t) && !/(짜|달|싱겁|매워|맵|탔|타|졸|넘쳤|눌었|망했|이상)/.test(n);
   if ((short && /(다\s*했어|다음|넘겨|됐어|만들었어|끝났어)$/.test(n)) || /^다음(\s*(단계|거))?$/.test(n)) {
-    if (S.step >= S.recipe.steps.length - 1) { speak('마지막 단계예요. 완성되면 “완성”이라고 말해 주세요.'); return true; }
-    gotoStep(S.step + 1); return true;
+    nextStep(); return true;
   }
-  if (/^(이전|뒤로|전\s*단계)/.test(n)) { gotoStep(S.step - 1); return true; }
-  if (/(띄워|고정|붙여)/.test(n)) { if (S.step < 0) S.step = 0; stepCard(S.step, { pin: true }); speak('오른쪽에 띄워 둘게요.'); return true; }
-  if (/(숨겨|닫아|치워|내려)/.test(n)) { hideCard(); return true; }
+  if (/^(이전|뒤로|전\s*단계)/.test(n)) { prevStep(); return true; }
+  if (/(띄워|고정|붙여)/.test(n)) { S.userPinned = true; if (S.step < 0) S.step = 0; stepCard(S.step, { pin: true }); speak('오른쪽에 띄워 둘게요.'); return true; }
+  if (/(숨겨|닫아|치워|내려)/.test(n)) { S.userPinned = false; hideCard(); return true; }
   if (/(레시피\s*보여|다음\s*(뭐|모)|뭐\s*하면\s*돼|지금\s*뭐|다시\s*보여|다시\s*말해)/.test(n) && S.step >= 0) { stepCard(S.step, { ms: 6000, pin: isPinned() }); speak(S.recipe.steps[S.step].say); return true; }
   if (/^완성/.test(n)) { hideCard(); S.step = S.recipe.steps.length; updateChip(); finishCooking(); speak('맛있게 드세요! 쓴 재료는 냉장고에서 뺐어요. 맛이 어땠는지 말해 주시면 다음에 반영할게요.'); S.step = S.recipe.steps.length; return true; }
   if (/요리\s*조리\s*(켜|시작)/.test(n)) { speak('좋은 아침이에요. 오늘은 무슨 요리를 같이 해 볼까요?'); return true; }
