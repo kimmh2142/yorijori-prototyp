@@ -182,7 +182,7 @@
   <select id="ttsIn"><option value="on">켜기</option><option value="off">끄기</option></select>
   <div class="row" style="margin-top:24px"><button class="btn" id="saveBtn">저장하고 닫기</button></div>
   <div class="row" style="margin-top:10px"><button class="btn ghost" id="resetBtn">시연용 초기 상태로 되돌리기</button></div>
-  <div style="margin-top:8px;font-size:12px;color:#8a9;text-align:center" id="verLabel">버전 11/05 22:15</div>
+  <div style="margin-top:8px;font-size:12px;color:#8a9;text-align:center" id="verLabel">버전 11/05 22:35</div>
   <div class="note" style="margin-top:16px">글라스 음성 명령: “다음”, “이전”, “레시피 보여줘”, “양념장 띄워 둬”, “숨겨”, “고추장 넣었어”, “3분 타이머”, “몇 분 남았어?”, “완성”. 그 밖의 말은 AI가 지금 단계를 알고 답하고, “이거”, “이 정도”, “냉장고”가 들어가면 카메라 한 장을 같이 보내요.</div>
 </div>
 
@@ -466,7 +466,7 @@ async function startFridge() {
   S.listening = true;
   setTimeout(() => {
     $('sendOverlay').style.display = 'none'; $('app').classList.add('hidden');
-    showCard({ label: '냉장고 털기', title: '🧊 냉장고를 보여 주세요', lines: ['“냉털해야겠는데 메뉴 추천해 줘”', '카메라가 잠깐 켜져서 한 장 봐요'] }, { ms: 0 });
+    showCard({ label: '냉장고 털기', title: '🧊 냉장고를 보여 주세요', lines: ['“메뉴 추천해 줘”', '카메라가 잠깐 켜져서 한 장 봐요'] }, { ms: 0 });
     speak('냉장고 문 열고, 메뉴 추천해 달라고 말해 주세요.');
     startRec();
   }, 900);
@@ -655,10 +655,10 @@ $('filePick').addEventListener('change', () => {
 async function snap() {
   setStatus('cam', '카메라 보는 중'); await ensureCamera();
   const pk = peekBox(); if (S.stream) { pk.innerHTML = '<video playsinline muted autoplay></video><div class="pk">📷 보는 중…</div>'; const v = pk.querySelector('video'); v.srcObject = S.stream; try { await v.play(); } catch (e) {} pk.classList.add('show'); }
-  await new Promise(r => setTimeout(r, 1500));
+  await new Promise(r => setTimeout(r, S.noRecipe ? 2500 : 1500));
   const b = grabFrame();
   if (b) { pk.innerHTML = `<img src="data:image/jpeg;base64,${b}"><div class="pk">✓ 한 장 찍었어요 · 카메라 끔</div>`; pk.classList.add('show'); }
-  clearTimeout(pk._t); pk._t = setTimeout(() => { pk.classList.remove('show'); setTimeout(() => { if (!pk.classList.contains('show')) pk.innerHTML = ''; }, 300); }, b ? 1800 : 0);
+  clearTimeout(pk._t); pk._t = setTimeout(() => { pk.classList.remove('show'); setTimeout(() => { if (!pk.classList.contains('show')) pk.innerHTML = ''; }, 300); }, b ? 2200 : 0);
   return b;
 }
 function peekBox() { let el = $('peek'); if (!el) { el = document.createElement('div'); el.id = 'peek'; document.body.appendChild(el); } return el; }
@@ -704,7 +704,7 @@ function parseDuration(t) {
 function fmtDur(s) { const m = Math.floor(s / 60), r = s % 60; return ((m ? m + '분' : '') + (r ? ' ' + r + '초' : '')).trim() || '0초'; }
 const YES = /^(응|웅|네|넵|예|어|그래|좋아|오케이|ㅇㅋ|ㅇㅇ|해\s*줘|맞춰|켜|시작|부탁|타이머|콜)/;
 const NO = /^(아니|괜찮아|됐어|안\s*해)/;
-const NEEDS_IMAGE = /(이거|이걸|이것|요거|이\s*정도|이만큼|봐\s*줘|보여\s*줄게|냉장고|냉털|뭐\s*만들|뭐\s*해\s*먹|졸았|익었|다\s*익|색\s*깔|이\s*양)/;
+const NEEDS_IMAGE = /(메뉴\s*추천|추천\s*해|이거|이걸|이것|요거|이\s*정도|이만큼|봐\s*줘|보여\s*줄게|냉장고|냉털|뭐\s*만들|뭐\s*해\s*먹|졸았|익었|다\s*익|색\s*깔|이\s*양)/;
 function updateChip() {
   const c = $('stepChip'), st = S.recipe.steps[S.step];
   if (!st || S.step < 0) { c.classList.remove('show'); return; }
@@ -829,6 +829,11 @@ function handleLocal(t) {
       return true;
     }
   }
+  if (S.pendingMenu && S.noRecipe && n.length <= 14 && (YES.test(n) || /(그걸로|그거|제육|첫\s*번째|하자|할래)/.test(n)) && !NO.test(n)) {
+    const r = D.recipes.find(x => x.id === S.pendingMenu); S.pendingMenu = null;
+    if (r) { S.noRecipe = false; loadRecipe(r); const mem = memFor(r); hideCard();
+      speak(`좋아요, ${r.name} 시작할게요.${mem.length ? ' 지난번에 ' + mem[0].note + '고 하셔서 반영할게요.' : ''}`).then(() => gotoStep(0)); return true; }
+  }
   if (S.pendingNext && !S.pendingOffer && n.length <= 12 && (YES.test(n) || /^(껐|껐어|다\s*껐)/.test(n))) { S.pendingNext = false; nextStep(); return true; }
   if (S.pendingOffer && ((n.length <= 12 && YES.test(n)) || (/타이머/.test(n) && !parseDuration(n)))) return acceptOffer();
   if (S.pendingOffer && n.length <= 10 && NO.test(n)) { S.pendingOffer = null; speak('알겠어요. 필요하면 말씀해 주세요.'); return true; }
@@ -919,6 +924,18 @@ async function chooseMenu(menu) {
 }
 
 // ================= 처리 흐름 =================
+// 시연용: 냉털 추천 첫 번째는 항상 엄마표 제육볶음, "응" 하면 바로 시작
+function pinJeyuk(out) {
+  const j = D.recipes.find(r => r.id === 'jeyuk') || D.recipes[0];
+  const others = ((out.card && out.card.lines) || []).filter(l => !/제육/.test(l)).slice(0, 2);
+  if (others.length < 2) ['계란말이 · 계란, 대파', '김치볶음밥 · 김치, 밥'].forEach(x => { if (others.length < 2) others.push(x); });
+  out.card = { title: '🧊 냉털 추천', lines: ['★ ' + j.name + ' · 돼지고기, 양파'].concat(others) };
+  out.actions = (out.actions || []).filter(a => a.type === 'inventory');
+  if (!out.actions.length) out.actions.push({ type: 'inventory', items: ['돼지고기', '양파', '대파'] });
+  out.say = '돼지고기랑 양파가 있네요. ' + j.name + ' 어때요?';
+  S.pendingMenu = j.id;
+  return out;
+}
 let busy = false;
 async function handle(text) {
   if (!text || busy) return;
@@ -928,7 +945,10 @@ async function handle(text) {
   try {
     const img = NEEDS_IMAGE.test(text) ? await snap() : null;
     setStatus('think', '생각 중');
-    const out = await gemini(text, img);
+    const fridgeAsk = S.noRecipe && (img || /(냉털|냉장고|메뉴|추천|뭐\s*(만들|해\s*먹))/.test(text));
+    let out;
+    try { out = await gemini(text, img); } catch (e) { if (!fridgeAsk) throw e; out = { say: '', card: null, actions: [] }; }
+    if (fridgeAsk) out = pinJeyuk(out);
     applyActions(out);
     const hasSub = (out.actions || []).some(a => a.type === 'substitute');
     if (out.card && out.card.title && !((hasSub && inCooking()) || isPinned())) showCard({ label: '요리조리', title: out.card.title, lines: out.card.lines || [] }, { ms: S.noRecipe ? 0 : 6000 });
