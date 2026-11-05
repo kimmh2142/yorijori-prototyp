@@ -22,6 +22,8 @@
 - 글라스 HUD: `showCard`, `stepCard`, `updateChip`, `gotoStep`, 타이머(`startTimer`), 음성(`initRec`, `speak`), 카메라(`snap`).
 - 명령 처리: `handle()` → `handleLocal()`(다음/이전/타이머/체크/띄워 둬/숨겨/저장 레시피·즐겨찾기 호출/완성 등은 AI 없이 처리) → 나머지는 `gemini()` + `applyActions()`(substitute, offer_timer, start_timer, remember, inventory, choose_menu).
 - 단계 이동: 음성 "다음/이전"(중간 인식 결과로도 즉시 처리), 방향키·PageUp/PageDown·스페이스(블루투스 발표 리모컨), 화면 좌우 스와이프. 공용 함수 `nextStep`/`prevStep`.
+- 제육볶음 8단계: 재료 손질 → 양념장(고정) → 버무리고 숙성(30분) → 파기름(3분) → 고기 볶기(8분) → 채소 넣기(2분) → 불 끄고 마무리 → 담기 → "완성".
+- 타이머가 끝나면 `S.pendingNext`로 다음 단계를 제안("숙성이 끝났어요. 볶으러 가 볼까요?"/"불 끄셨나요?"), "응"·"다음"·"껐어"로 넘어간다.
 - 타이머 제안: 단계에 `offer`가 있으면 카드에 노란 줄로 표시, "응"·"타이머" 또는 카드 탭으로 시작(`acceptOffer`). 실행 중 타이머는 오른쪽 위, 고정 카드는 그 아래로 내려간다.
 - 녹화 모드: `body.rec` — 아래 버튼 숨김, 워터마크 표시. 설정 또는 HUD 1초 길게 누르기로 토글.
 - 모델 기본값: `gemini-3.1-flash-lite` (설정에서 변경 가능).

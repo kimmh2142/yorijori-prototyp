@@ -203,10 +203,11 @@ const BUILTIN = [
       st('재료 손질', ['대파·청양고추 어슷썰기', '양파 1cm 두께로 썰기', '돼지고기 한입 크기로 썰기'], '재료 손질부터 시작할게요. 대파와 청양고추는 어슷하게, 양파는 1센티 두께로, 고기는 한입 크기로 썰어 주세요.', { safety: true }),
       st('양념장 만들기', ['고추장 3큰술', '고춧가루 2큰술', '다진 마늘 1큰술', '매실액 2큰술', '간장 1큰술', '통깨·후추 약간'], '다음은 양념장이에요. 양념이 많으니 오른쪽에 띄워 둘게요. 넣은 건 말해 주시면 체크할게요.', { pinList: true }),
       st('버무리고 숙성', ['양념장을 고기에 버무리기', '냉장고에서 30분 숙성 (선택)'], '양념장을 고기에 버무려 주세요. 냉장고에 30분 두면 양념이 배어 더 맛있어요. 30분 타이머 맞출까요?', { offer: { seconds: 1800, label: '숙성' } }),
-      st('파기름 내기', ['팬에 식용유 2큰술 + 대파', '향이 올라올 때까지 볶기'], '팬에 식용유 2큰술과 대파를 넣고 파기름을 내 주세요.'),
-      st('고기 볶기', ['양념한 고기 넣기', '중불로 약 8분, 완전히 익히기'], '양념한 고기를 넣고 중불로 볶아 완전히 익혀 주세요. 8분 정도 걸려요. 8분 타이머 맞출까요?', { offer: { seconds: 480, label: '고기' } }),
-      st('채소 넣기', ['양파·청양고추 넣기', '강불로 2분 볶고 불 끄기'], '양파와 청양고추를 넣고 강불로 2분 볶은 뒤 불을 꺼 주세요.', { offer: { seconds: 120, label: '채소' } }),
-      st('마무리', ['참기름 약간 넣어 섞기', '접시에 담고 통깨 뿌리기'], '불을 끄고 참기름과 통깨로 마무리해 주세요.')
+      st('파기름 내기', ['팬에 식용유 2큰술 + 대파', '중불로 향이 올라올 때까지 약 3분'], '숙성한 고기를 꺼내고, 팬에 식용유 2큰술과 대파를 넣어 파기름을 내 주세요. 3분 타이머 맞출까요?', { offer: { seconds: 180, label: '파기름' } }),
+      st('고기 볶기', ['양념한 고기 넣기', '중불로 약 8분, 속까지 완전히 익히기'], '양념한 고기를 넣고 중불로 볶아 완전히 익혀 주세요. 8분 정도 걸려요. 8분 타이머 맞출까요?', { offer: { seconds: 480, label: '고기' } }),
+      st('채소 넣기', ['양파·청양고추 넣기', '강불로 2분 볶고 불 끄기'], '양파와 청양고추를 넣고 강불로 2분 볶은 뒤 불을 꺼 주세요. 2분 타이머 맞출까요?', { offer: { seconds: 120, label: '채소' } }),
+      st('불 끄고 마무리', ['불 끈 것 확인', '참기름 약간 넣어 섞기'], '불을 끄고 참기름을 조금 넣어 한 번 섞어 주세요.'),
+      st('담기', ['접시에 담기', '통깨 솔솔 뿌리기', '밥과 함께 차리기'], '접시에 담고 통깨를 뿌려 주세요. 다 차렸으면 완성이라고 말해 주세요.', { last: true })
     ] },
   { id: 'kimchi', cat: '한식', name: '김치찌개', source: '릴스 저장', servings: '1인분', ingredients: ['김치', '돼지고기', '두부', '대파', '고춧가루'],
     steps: [
@@ -596,7 +597,11 @@ function renderTimers() {
 function beep() { try { const a = new (window.AudioContext || window.webkitAudioContext)(); [0, .35, .7].forEach(s => { const o = a.createOscillator(), g = a.createGain(); o.frequency.value = 880; o.connect(g); g.connect(a.destination); g.gain.setValueAtTime(.2, a.currentTime + s); o.start(a.currentTime + s); o.stop(a.currentTime + s + .2); }); } catch (e) {} }
 setInterval(() => {
   S.timers.forEach(t => { if (!t.done && Date.now() >= t.end) { t.done = true; beep();
-    speak(t.label === '숙성' ? '숙성이 끝났어요. 볶으러 가 볼까요?' : (S.step >= S.recipe.steps.length - 2 ? `${t.label} 타이머가 끝났어요. 불 끄셨나요?` : `${t.label} 타이머가 끝났어요.`));
+    const isLastCook = S.recipe.steps[S.step + 1] && /마무리|불/.test(S.recipe.steps[S.step + 1].title);
+    const msg = t.label === '숙성' ? '숙성이 끝났어요. 볶으러 가 볼까요?' : isLastCook ? `${t.label} 타이머가 끝났어요. 불 끄셨나요?` : `${t.label} 타이머가 끝났어요. 다음 단계로 갈까요?`;
+    if (S.step >= 0 && S.step < S.recipe.steps.length - 1) { S.pendingNext = true;
+      showCard({ label: '타이머 끝', title: `⏱ ${t.label} 끝`, lines: [`다음 · ${S.recipe.steps[S.step + 1].title}`, '“응” 하거나 “다음”'] }, { ms: 0 }); }
+    speak(msg);
     setTimeout(() => { S.timers = S.timers.filter(x => x !== t); renderTimers(); }, 15000); } });
   if (S.timers.length) renderTimers();
 }, 500);
@@ -632,11 +637,12 @@ function gotoStep(i, opts) {
   });
 }
 function nextStep() {
-  if (S.step >= S.recipe.steps.length - 1) { speak('마지막 단계예요. 완성되면 “완성”이라고 말해 주세요.'); return; }
+  S.pendingNext = false;
+  if (S.step >= S.recipe.steps.length - 1) { speak('마지막 단계예요. 다 차렸으면 “완성”이라고 말해 주세요.'); return; }
   try { speechSynthesis.cancel(); } catch (e) {}
   gotoStep(S.step + 1);
 }
-function prevStep() { if (S.step <= 0) return; try { speechSynthesis.cancel(); } catch (e) {} gotoStep(S.step - 1); }
+function prevStep() { S.pendingNext = false; if (S.step <= 0) return; try { speechSynthesis.cancel(); } catch (e) {} gotoStep(S.step - 1); }
 const hudOn = () => $('app').classList.contains('hidden') && $('settings').style.display !== 'block';
 document.addEventListener('keydown', e => {
   if (!hudOn() || e.target === $('textIn')) return;
@@ -708,6 +714,7 @@ function handleLocal(t) {
       return true;
     }
   }
+  if (S.pendingNext && !S.pendingOffer && n.length <= 12 && (YES.test(n) || /^(껐|껐어|다\s*껐)/.test(n))) { S.pendingNext = false; nextStep(); return true; }
   if (S.pendingOffer && ((n.length <= 12 && YES.test(n)) || (/타이머/.test(n) && !parseDuration(n)))) return acceptOffer();
   if (S.pendingOffer && n.length <= 10 && NO.test(n)) { S.pendingOffer = null; speak('알겠어요. 필요하면 말씀해 주세요.'); return true; }
   if (/타이머\s*(꺼|끄|취소|없애)/.test(n)) { S.timers = []; renderTimers(); speak('타이머를 껐어요.'); return true; }
