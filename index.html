@@ -867,7 +867,7 @@ function applyActions(out) {
     if (a.type === 'substitute' && a.from) {
       S.subs.push(a);
       S.recipe.steps.forEach(st => { st.lines = st.lines.map(l => l.includes(a.from) ? `${a.to} ${a.amount || ''} (${a.from} 대신)`.replace(/\s+/g, ' ').trim() : l); });
-      if (S.step >= 0) setTimeout(() => stepCard(S.step, { ms: keepMode() ? 0 : 6000, pin: isPinned() }), 200);
+      if (S.step >= 0) { const cs = S.recipe.steps[S.step]; if (cs) stepCard(S.step, { ms: 0, pin: !!cs.pinList || !!S.userPinned }); }
     } else if (a.type === 'offer_timer' && a.seconds) S.pendingOffer = { seconds: a.seconds, label: a.label || '타이머' };
     else if (a.type === 'start_timer' && a.seconds) startTimer(a.seconds, a.label);
     else if (a.type === 'remember' && a.note) { D.memory.push({ recipe: S.recipe.name.replace('엄마표 ', ''), note: a.note }); saveD();
@@ -897,7 +897,8 @@ async function handle(text) {
     setStatus('think', '생각 중');
     const out = await gemini(text, img);
     applyActions(out);
-    if (out.card && out.card.title) showCard({ label: '요리조리', title: out.card.title, lines: out.card.lines || [] }, { ms: 6000 });
+    const hasSub = (out.actions || []).some(a => a.type === 'substitute');
+    if (out.card && out.card.title && !((hasSub && inCooking()) || isPinned())) showCard({ label: '요리조리', title: out.card.title, lines: out.card.lines || [] }, { ms: 6000 });
     await speak(out.say || '');
     if (S.after) { const f = S.after; S.after = null; await new Promise(r => setTimeout(r, 400)); f(); }
   } catch (e) { speak('잠깐 문제가 생겼어요. ' + e.message); }
@@ -907,7 +908,7 @@ $('camBtn').onclick = async () => {
   await ensureCamera(); let img = grabFrame(); flashShot(img); if (!img) img = await pickPhoto();
   const q = $('textIn').value.trim() || '이거 봐 줘. 지금 단계에서 도움이 되는 말을 해 줘.'; $('textIn').value = '';
   busy = true;
-  try { setStatus('think', '생각 중'); const out = await gemini(q, img); applyActions(out); if (out.card && out.card.title) showCard({ label: '요리조리', title: out.card.title, lines: out.card.lines || [] }); await speak(out.say || ''); }
+  try { setStatus('think', '생각 중'); const out = await gemini(q, img); applyActions(out); if (out.card && out.card.title && !(((out.actions || []).some(a => a.type === 'substitute') && inCooking()) || isPinned())) showCard({ label: '요리조리', title: out.card.title, lines: out.card.lines || [] }); await speak(out.say || ''); }
   catch (e) { speak('잠깐 문제가 생겼어요. ' + e.message); }
   finally { busy = false; setStatus(S.listening ? 'listen' : '', S.listening ? '듣는 중' : '대기'); }
 };
