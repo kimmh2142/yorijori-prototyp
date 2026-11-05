@@ -3,7 +3,7 @@
 const path = require('path');
 const { chromium } = require('playwright');
 (async () => {
-  const b = await chromium.launch();
+  const b = await chromium.launch({ args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
   const p = await b.newPage({ viewport: { width: 412, height: 860 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.route('https://generativelanguage.googleapis.com/**', async r => {
@@ -16,7 +16,7 @@ const { chromium } = require('playwright');
   await p.evaluate(() => { localStorage.clear(); localStorage.setItem('yrjr2_key', '"test"'); localStorage.setItem('yrjr2_tts', '"off"'); });
   await p.reload();
   await p.click('#sendBtn'); await p.waitForTimeout(1500);
-  const say = async t => { await p.fill('#textIn', t); await p.press('#textIn', 'Enter'); await p.waitForTimeout(600); };
+  const say = async t => { await p.fill('#textIn', t); await p.press('#textIn', 'Enter'); await p.waitForTimeout(t.includes('이거') ? 2000 : 600); };
   for (const t of ['시작', '손질 다 했어', '고추장 넣었어', '매실액 없는데 이거 써도 돼?', '완성', '다음엔 덜 달게']) await say(t);
   await p.evaluate(() => window.__yrjr.setRec(true, true));
   const r = await p.evaluate(() => ({ subs: window.__yrjr.S.subs.length, mem: window.__yrjr.D.memory.length, hist: window.__yrjr.D.history.length, rec: document.body.classList.contains('rec') }));

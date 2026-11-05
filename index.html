@@ -577,7 +577,22 @@ async function initCamera() {
   try { S.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false }); $('bg').srcObject = S.stream; applyBg(); }
   catch (e) { S.stream = null; }
 }
-function applyBg() { $('bg').style.display = (store.get('bg', 'black') === 'camera' && S.stream) ? 'block' : 'none'; }
+function applyBg() { $('bg').style.display = (store.get('bg', 'black') === 'camera' && S.stream) ? 'block' : 'none'; try { $('bg').play(); } catch (e) {} }
+// 카메라가 꺼져 있거나 끊겼으면 다시 켬
+async function ensureCamera() {
+  const live = S.stream && S.stream.getVideoTracks().some(t => t.readyState === 'live');
+  if (!live) { S.stream = null; await Promise.race([initCamera(), new Promise(r => setTimeout(r, 4000))]); }
+  const v = $('bg'); try { await v.play(); } catch (e) {}
+  for (let i = 0; i < 20 && S.stream && !v.videoWidth; i++) await new Promise(r => setTimeout(r, 100));
+  return !!S.stream;
+}
+// 찍은 한 장을 잠깐 작게 보여 줌
+function flashShot(b64) {
+  if (!b64) return; let el = $('shot');
+  if (!el) { el = document.createElement('img'); el.id = 'shot'; el.style.cssText = 'position:fixed;left:14px;bottom:110px;width:34vw;max-width:220px;border:2px solid #7CFFB2;border-radius:12px;z-index:60;transition:opacity .4s'; document.body.appendChild(el); }
+  el.src = 'data:image/jpeg;base64,' + b64; el.style.opacity = '1'; el.style.display = 'block';
+  clearTimeout(el._t); el._t = setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.style.display = 'none', 400); }, 2500);
+}
 function grabFrame() {
   const v = $('bg'); if (!S.stream || !v.videoWidth) return null;
   const w = 768, h = Math.round(v.videoHeight * w / v.videoWidth); const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -592,7 +607,7 @@ $('filePick').addEventListener('change', () => {
     c.getContext('2d').drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url); const r = pickResolve; pickResolve = null; r(c.toDataURL('image/jpeg', 0.8).split(',')[1]); };
   img.src = url;
 });
-async function snap() { setStatus('cam', '촬영 중'); let b = grabFrame(); await new Promise(r => setTimeout(r, 350)); return b || grabFrame(); }
+async function snap() { setStatus('cam', '촬영 중'); await ensureCamera(); let b = grabFrame(); await new Promise(r => setTimeout(r, 350)); b = b || grabFrame(); flashShot(b); return b; }
 
 // ================= 타이머 =================
 function startTimer(seconds, label) { S.timers.push({ id: Date.now() + Math.random(), label: label || '타이머', end: Date.now() + seconds * 1000, done: false }); renderTimers(); }
@@ -833,7 +848,7 @@ async function handle(text) {
   finally { busy = false; setStatus(S.listening ? 'listen' : '', S.listening ? '듣는 중' : '대기'); }
 }
 $('camBtn').onclick = async () => {
-  let img = grabFrame(); if (!img) img = await pickPhoto();
+  await ensureCamera(); let img = grabFrame(); flashShot(img); if (!img) img = await pickPhoto();
   const q = $('textIn').value.trim() || '이거 봐 줘. 지금 단계에서 도움이 되는 말을 해 줘.'; $('textIn').value = '';
   busy = true;
   try { setStatus('think', '생각 중'); const out = await gemini(q, img); applyActions(out); if (out.card && out.card.title) showCard({ label: '요리조리', title: out.card.title, lines: out.card.lines || [] }); await speak(out.say || ''); }
@@ -845,7 +860,7 @@ $('textIn').addEventListener('keydown', e => { if (e.key === 'Enter') { const v 
 // ================= 설정 =================
 function openSettings() { $('stayIn').value = store.get('cardStay', 'keep'); $('recIn').value = document.body.classList.contains('rec') ? 'on' : 'off'; $('glassIn').value = store.get('glass', 'on'); $('keyIn').value = store.get('key', ''); $('modelIn').value = store.get('model', 'gemini-3.1-flash-lite'); $('bgIn').value = store.get('bg', 'black'); $('ttsIn').value = store.get('tts', 'on'); $('settings').style.display = 'block'; }
 $('appSet').onclick = openSettings;
-$('saveBtn').onclick = () => { store.set('cardStay', $('stayIn').value); setRec($('recIn').value === 'on', true); store.set('glass', $('glassIn').value); render(); store.set('key', $('keyIn').value.trim()); store.set('model', $('modelIn').value.trim() || 'gemini-3.1-flash-lite'); store.set('bg', $('bgIn').value); store.set('tts', $('ttsIn').value); applyBg(); $('settings').style.display = 'none'; };
+$('saveBtn').onclick = () => { store.set('cardStay', $('stayIn').value); setRec($('recIn').value === 'on', true); store.set('glass', $('glassIn').value); render(); store.set('key', $('keyIn').value.trim()); store.set('model', $('modelIn').value.trim() || 'gemini-3.1-flash-lite'); store.set('bg', $('bgIn').value); store.set('tts', $('ttsIn').value); if ($('bgIn').value === 'camera') ensureCamera().then(applyBg); else applyBg(); $('settings').style.display = 'none'; };
 $('resetBtn').onclick = () => { D.my = []; D.fridge = clone(DEFAULT_FRIDGE); D.history = []; D.memory = []; D.favs = ['jeyuk', 'kimchi']; D.selected = 'jeyuk'; saveD(); cat = null; query = ''; $('settings').style.display = 'none'; tab = 'home'; render(); };
 let dimT = null; function wake() { $('controls').classList.remove('dim'); clearTimeout(dimT); dimT = setTimeout(() => $('controls').classList.add('dim'), 6000); }
 ['touchstart', 'mousemove', 'keydown'].forEach(ev => document.addEventListener(ev, wake, { passive: true })); wake();
