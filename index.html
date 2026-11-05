@@ -96,6 +96,12 @@
   #say.show { opacity:1; }
   #heard { position:absolute; left:50%; bottom:calc(env(safe-area-inset-bottom) + 54px); transform:translateX(-50%);
     font-size:15px; color:var(--soft); opacity:.85; white-space:nowrap; max-width:92vw; overflow:hidden; text-overflow:ellipsis; }
+  #recMark { position:absolute; right:18px; bottom:calc(env(safe-area-inset-bottom) + 16px); font-size:13px; color:#AEB6AF; display:none; }
+  body.rec #recMark { display:block; }
+  body.rec #controls, body.rec #heard { display:none; }
+  body.rec #say { bottom:calc(env(safe-area-inset-bottom) + 48px); }
+  #hud, #card, #say { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  #recToast { position:fixed; left:50%; top:45%; transform:translateX(-50%); background:rgba(20,24,22,.9); color:#F6F3EC; border:1px solid #7FD8BC; border-radius:14px; padding:12px 18px; font-size:15px; z-index:30; display:none; }
   #controls { position:fixed; left:0; right:0; bottom:0; padding:0 12px calc(env(safe-area-inset-bottom) + 10px);
     display:flex; gap:8px; align-items:center; transition:opacity .3s; }
   #controls.dim { opacity:.18; }
@@ -133,6 +139,7 @@
   <div id="card"><div id="cardLabel"></div><div id="cardTitle"></div><div id="cardLines"></div><div id="cardPin">고정됨 · “숨겨” 하면 사라져요</div></div>
   <div id="say"></div>
   <div id="heard"></div>
+  <div id="recMark">● 실제 작동 화면 · 요리조리 프로토타입</div>
 </div>
 <div id="controls">
   <button id="backApp" title="연동 앱으로">📱</button>
@@ -140,6 +147,7 @@
   <button id="camBtn" title="보여주고 묻기">📷</button>
   <input id="textIn" placeholder="말 대신 입력 (예: 다음, 매실액 없는데?)" enterkeyhint="send">
 </div>
+<div id="recToast"></div>
 <input id="filePick" type="file" accept="image/*" capture="environment" class="hidden">
 <input id="mediaPick" type="file" accept="image/*,audio/*" class="hidden">
 
@@ -155,6 +163,9 @@
   <select id="glassIn"><option value="on">연결됨 · 요리 시작 시 글라스 화면으로</option><option value="off">없음 · 휴대폰에 레시피 표시</option></select>
   <label>글라스 배경</label>
   <select id="bgIn"><option value="black">검정 (영상 합성용)</option><option value="camera">카메라 화면 (글라스 시야처럼)</option></select>
+  <label>녹화 모드 (아래 버튼 숨김 · 워터마크 표시)</label>
+  <select id="recIn"><option value="off">끄기</option><option value="on">켜기</option></select>
+  <div class="note">글라스 화면에서 아무 곳이나 1초 길게 누르면 켜고 끌 수 있어요.</div>
   <label>음성 답변 (TTS)</label>
   <select id="ttsIn"><option value="on">켜기</option><option value="off">끄기</option></select>
   <div class="row" style="margin-top:24px"><button class="btn" id="saveBtn">저장하고 닫기</button></div>
@@ -751,14 +762,25 @@ $('camBtn').onclick = async () => {
 $('textIn').addEventListener('keydown', e => { if (e.key === 'Enter') { const v = $('textIn').value.trim(); $('textIn').value = ''; handle(v); } });
 
 // ================= 설정 =================
-function openSettings() { $('glassIn').value = store.get('glass', 'on'); $('keyIn').value = store.get('key', ''); $('modelIn').value = store.get('model', 'gemini-3.1-flash-lite'); $('bgIn').value = store.get('bg', 'black'); $('ttsIn').value = store.get('tts', 'on'); $('settings').style.display = 'block'; }
+function openSettings() { $('recIn').value = document.body.classList.contains('rec') ? 'on' : 'off'; $('glassIn').value = store.get('glass', 'on'); $('keyIn').value = store.get('key', ''); $('modelIn').value = store.get('model', 'gemini-3.1-flash-lite'); $('bgIn').value = store.get('bg', 'black'); $('ttsIn').value = store.get('tts', 'on'); $('settings').style.display = 'block'; }
 $('appSet').onclick = openSettings;
-$('saveBtn').onclick = () => { store.set('glass', $('glassIn').value); render(); store.set('key', $('keyIn').value.trim()); store.set('model', $('modelIn').value.trim() || 'gemini-3.1-flash-lite'); store.set('bg', $('bgIn').value); store.set('tts', $('ttsIn').value); applyBg(); $('settings').style.display = 'none'; };
+$('saveBtn').onclick = () => { setRec($('recIn').value === 'on', true); store.set('glass', $('glassIn').value); render(); store.set('key', $('keyIn').value.trim()); store.set('model', $('modelIn').value.trim() || 'gemini-3.1-flash-lite'); store.set('bg', $('bgIn').value); store.set('tts', $('ttsIn').value); applyBg(); $('settings').style.display = 'none'; };
 $('resetBtn').onclick = () => { D.my = []; D.fridge = clone(DEFAULT_FRIDGE); D.history = []; D.memory = []; D.favs = ['jeyuk', 'kimchi']; D.selected = 'jeyuk'; saveD(); cat = null; query = ''; $('settings').style.display = 'none'; tab = 'home'; render(); };
 let dimT = null; function wake() { $('controls').classList.remove('dim'); clearTimeout(dimT); dimT = setTimeout(() => $('controls').classList.add('dim'), 6000); }
 ['touchstart', 'mousemove', 'keydown'].forEach(ev => document.addEventListener(ev, wake, { passive: true })); wake();
+// ================= 녹화 모드 =================
+function setRec(on, quiet) {
+  document.body.classList.toggle('rec', on); store.set('rec', on ? 'on' : 'off');
+  if (!quiet) { const t = $('recToast'); t.textContent = on ? '녹화 모드 켜짐 · 길게 누르면 꺼져요' : '녹화 모드 꺼짐'; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 1500); }
+}
+setRec(store.get('rec', 'off') === 'on', true);
+let lpTimer = null;
+const hudActive = () => $('app').classList.contains('hidden') && $('settings').style.display !== 'block';
+document.addEventListener('touchstart', e => { if (!hudActive() || e.target.closest('#controls')) return; lpTimer = setTimeout(() => setRec(!document.body.classList.contains('rec')), 900); }, { passive: true });
+['touchend', 'touchmove', 'touchcancel'].forEach(ev => document.addEventListener(ev, () => clearTimeout(lpTimer), { passive: true }));
+document.addEventListener('contextmenu', e => { if (hudActive()) e.preventDefault(); });
 render();
-window.__yrjr = { S, D, handle, sendToGlass, backToApp };
+window.__yrjr = { S, D, handle, sendToGlass, backToApp, setRec };
 })();
 </script>
 </body>
