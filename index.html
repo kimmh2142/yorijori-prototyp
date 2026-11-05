@@ -307,7 +307,7 @@ const D = { my: store.get('my', []), fridge: store.get('fridge', DEFAULT_FRIDGE)
   memory: store.get('memory', []), favs: store.get('favs', ['jeyuk', 'kimchi']), selected: store.get('selected', 'jeyuk') };
 Object.defineProperty(D, 'recipes', { get: () => D.my.concat(BUILTIN) });
 function saveD() { ['my', 'fridge', 'history', 'memory', 'favs', 'selected'].forEach(k => store.set(k, D[k])); }
-const S = { recipe: clone(BUILTIN[0]), step: -1, subs: [], checked: {}, timers: [], pendingOffer: null, history: [],
+const S = { speakSeq: 0, userHidden: false, recipe: clone(BUILTIN[0]), step: -1, subs: [], checked: {}, timers: [], pendingOffer: null, history: [],
   listening: false, speaking: false, stream: null, after: null, started: false, stepSeq: 0 };
 
 // ================= 연동 앱 화면 =================
@@ -454,6 +454,7 @@ async function sendToGlass() {
   S.recipe = clone(r); S.step = -1; S.subs = []; S.checked = {}; S.history = []; S.pendingOffer = null; $('stepChip').classList.remove('show');
   $('sendText').textContent = `“${r.name}”을(를) 글라스로 보내는 중…`; $('sendOverlay').style.display = 'flex';
   try { speechSynthesis && speechSynthesis.getVoices(); } catch (e) {}
+  keepAwake();
   if (!S.started) { await initMedia(); initRec(); S.started = true; } else applyBg();
   S.listening = true;
   setTimeout(() => {
@@ -488,7 +489,14 @@ function showCard({ label = '', title = '', lines = [], next = '', done = [], ch
   lines.forEach((l, i) => { const d = document.createElement('div'); d.textContent = (done[i] ? '✓ ' : checklist ? '○ ' : '') + l; if (done[i]) d.className = 'done'; box.appendChild(d); });
   if (next) { const d = document.createElement('div'); d.className = 'next'; d.textContent = '다음 · ' + next; box.appendChild(d); }
   const c = $('card'); c.classList.toggle('pinned', pin); c.classList.add('show');
-  clearTimeout(cardTimer); if (!pin && ms > 0) cardTimer = setTimeout(hideCard, ms);
+  clearTimeout(cardTimer); if (!pin && ms > 0) cardTimer = setTimeout(cardTimeout, ms);
+}
+// 기본(keep) 모드: 안내·답변 카드가 끝나면 숨기지 않고 지금 단계 카드로 돌아감. "숨겨" 했을 때만 사라짐
+function keepMode() { return store.get('cardStay', 'keep') === 'keep'; }
+function inCooking() { return S.recipe && S.step >= 0 && S.step < S.recipe.steps.length; }
+function cardTimeout() {
+  if (keepMode() && inCooking() && !S.userHidden) { const st = S.recipe.steps[S.step]; stepCard(S.step, { ms: 0, pin: !!st.pinList || !!S.userPinned }); }
+  else hideCard();
 }
 function markOffer() {
   const c = $('card'); const box = $('cardLines'); box.querySelectorAll('.offer').forEach(x => x.remove());
@@ -508,7 +516,7 @@ function stepCard(i, opts) {
   const st = S.recipe.steps[i]; if (!st) return;
   const nx = S.recipe.steps[i + 1]; const done = st.lines.map((_, k) => !!(S.checked[i] && S.checked[i][k]));
   showCard({ label: `${String(i + 1).padStart(2, '0')} / ${String(S.recipe.steps.length).padStart(2, '0')} · ${S.recipe.name}`, title: st.title, lines: st.lines, next: nx ? nx.title : '', done, checklist: !!st.pinList },
-    opts || { ms: st.safety ? 3500 : 6000, pin: !!st.pinList || !!S.userPinned });
+    opts || { ms: keepMode() ? 0 : (st.safety ? 3500 : 6000), pin: !!st.pinList || !!S.userPinned });
   markOffer();
 }
 let sayTimer = null;
@@ -524,8 +532,11 @@ function speak(text) {
       speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text); u.lang = 'ko-KR'; u.rate = 1.05;
       const v = speechSynthesis.getVoices().find(v => v.lang && v.lang.startsWith('ko')); if (v) u.voice = v;
-      S.speaking = true; pauseRec();
-      u.onend = u.onerror = () => { S.speaking = false; resumeRec(); res(); };
+      const my = ++S.speakSeq; S.speaking = true; pauseRec();
+      let done = false; const fin = () => { if (done) return; done = true; if (S.speakSeq === my) { S.speaking = false; resumeRec(); } res(); };
+      u.onend = u.onerror = fin;
+      // 안드로이드 크롬은 가끔 onend를 안 줘서 듣기가 멈춤 → 글자 수로 최대 시간 잡아 강제로 끝냄
+      setTimeout(fin, 2500 + text.length * 220);
       speechSynthesis.speak(u);
     } catch (e) { S.speaking = false; res(); }
   });
@@ -535,7 +546,7 @@ let rec = null, recActive = false, quickDone = false;
 function initRec() {
   if (!SR) { $('heard').textContent = '이 브라우저는 음성 인식을 지원하지 않아요. 아래 입력창을 쓰세요.'; return; }
   rec = new SR(); rec.lang = 'ko-KR'; rec.interimResults = true; rec.continuous = false;
-  rec.onresult = e => { let fin = '', interim = '';
+  rec.onresult = e => { lastRecOk = Date.now(); let fin = '', interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) fin += t; else interim += t; }
     $('heard').textContent = '“' + (fin || interim) + '”';
     const quick = (interim || fin).replace(/[.,!?~\s]/g, '');
@@ -543,14 +554,25 @@ function initRec() {
       quickDone = true; try { rec.abort(); } catch (x) {} /^(이전)/.test(quick) ? prevStep() : (S.step < 0 ? gotoStep(0) : nextStep()); return;
     }
     if (fin.trim() && !quickDone) handle(fin.trim()); };
-  rec.onstart = () => { quickDone = false; };
+  rec.onstart = () => { quickDone = false; lastRecOk = Date.now(); };
   rec.onend = () => { recActive = false; if (S.listening && !S.speaking) setTimeout(startRec, 250); };
   rec.onerror = e => { recActive = false;
     const why = { 'not-allowed': '마이크 권한이 막혀 있어요 (주소창 자물쇠 → 권한 → 마이크 허용)', 'service-not-allowed': '이 브라우저에서는 음성 인식을 쓸 수 없어요 (크롬으로 열어 주세요)', 'audio-capture': '마이크를 찾지 못했어요', 'network': '음성 인식 서버에 연결하지 못했어요 (인터넷 확인)' }[e.error];
     if (why) { $('heard').textContent = why; }
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { S.listening = false; setStatus('', '음성 인식 꺼짐'); } };
 }
-function startRec() { if (!rec || recActive || S.speaking || !S.listening) return; try { rec.start(); recActive = true; setStatus('listen', '듣는 중'); } catch (e) {} }
+function startRec() { if (!rec || recActive || S.speaking || !S.listening) return; try { rec.start(); recActive = true; setStatus('listen', '듣는 중'); } catch (e) { recActive = false; } }
+// 지킴이: 듣기 켜짐인데 인식이 멈춰 있으면 다시 켬
+let lastRecOk = Date.now();
+setInterval(() => {
+  if (!S.listening || !rec || S.speaking || busy) { lastRecOk = Date.now(); return; }
+  if (!recActive) { startRec(); return; }
+  if (Date.now() - lastRecOk > 15000) { try { rec.abort(); } catch (e) {} recActive = false; lastRecOk = Date.now(); setTimeout(startRec, 300); }
+}, 2000);
+// 요리 중 화면 꺼짐 방지
+let wakeLock = null;
+async function keepAwake() { try { if ('wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } } catch (e) {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.started) { keepAwake(); if (S.listening) setTimeout(startRec, 300); } });
 function pauseRec() { if (rec && recActive) { try { rec.abort(); } catch (e) {} recActive = false; } }
 function resumeRec() { if (S.listening) setTimeout(startRec, 300); }
 $('micBtn').onclick = () => { S.listening = !S.listening; if (S.listening) startRec(); else { pauseRec(); setStatus('', '듣기 꺼짐'); } };
@@ -650,7 +672,7 @@ function updateChip() {
   c.classList.add('show');
 }
 function gotoStep(i, opts) {
-  const prev = S.step; S.step = Math.max(0, Math.min(i, S.recipe.steps.length - 1)); const st = S.recipe.steps[S.step];
+  S.userHidden = false; const prev = S.step; S.step = Math.max(0, Math.min(i, S.recipe.steps.length - 1)); const st = S.recipe.steps[S.step];
   // 단계가 바뀌면 이전 단계 타이머는 정리
   if (prev !== S.step && S.timers.length) { S.timers = []; renderTimers(); }
   S.pendingOffer = st.offer || null; updateChip();
@@ -767,9 +789,9 @@ function handleLocal(t) {
     nextStep(); return true;
   }
   if (/^(이전|뒤로|전\s*단계)/.test(n)) { prevStep(); return true; }
-  if (/(띄워|고정|붙여)/.test(n)) { S.userPinned = true; if (S.step < 0) S.step = 0; stepCard(S.step, { pin: true }); speak('오른쪽에 띄워 둘게요.'); return true; }
-  if (/(숨겨|닫아|치워|내려)/.test(n)) { S.userPinned = false; hideCard(); return true; }
-  if (/(레시피\s*보여|다음\s*(뭐|모)|뭐\s*하면\s*돼|지금\s*뭐|다시\s*보여|다시\s*말해)/.test(n) && S.step >= 0) { stepCard(S.step, { ms: 6000, pin: isPinned() }); speak(S.recipe.steps[S.step].say); return true; }
+  if (/(띄워|고정|붙여)/.test(n)) { S.userPinned = true; S.userHidden = false; if (S.step < 0) S.step = 0; stepCard(S.step, { pin: true }); speak('오른쪽에 띄워 둘게요.'); return true; }
+  if (/(숨겨|닫아|치워|내려)/.test(n)) { S.userPinned = false; S.userHidden = true; hideCard(); return true; }
+  if (/(레시피\s*보여|다음\s*(뭐|모)|뭐\s*하면\s*돼|지금\s*뭐|다시\s*보여|다시\s*말해)/.test(n) && S.step >= 0) { S.userHidden = false; stepCard(S.step, { ms: keepMode() ? 0 : 6000, pin: isPinned() }); speak(S.recipe.steps[S.step].say); return true; }
   if (/^완성/.test(n)) { hideCard(); S.step = S.recipe.steps.length; updateChip(); finishCooking(); speak('맛있게 드세요! 쓴 재료는 냉장고에서 뺐어요. 맛이 어땠는지 말해 주시면 다음에 반영할게요.'); S.step = S.recipe.steps.length; return true; }
   if (/요리\s*조리\s*(켜|시작)/.test(n)) { speak('좋은 아침이에요. 오늘은 무슨 요리를 같이 해 볼까요?'); return true; }
   return false;
@@ -824,7 +846,7 @@ function applyActions(out) {
     if (a.type === 'substitute' && a.from) {
       S.subs.push(a);
       S.recipe.steps.forEach(st => { st.lines = st.lines.map(l => l.includes(a.from) ? `${a.to} ${a.amount || ''} (${a.from} 대신)`.replace(/\s+/g, ' ').trim() : l); });
-      if (S.step >= 0) setTimeout(() => stepCard(S.step, { ms: 6000, pin: isPinned() }), 200);
+      if (S.step >= 0) setTimeout(() => stepCard(S.step, { ms: keepMode() ? 0 : 6000, pin: isPinned() }), 200);
     } else if (a.type === 'offer_timer' && a.seconds) S.pendingOffer = { seconds: a.seconds, label: a.label || '타이머' };
     else if (a.type === 'start_timer' && a.seconds) startTimer(a.seconds, a.label);
     else if (a.type === 'remember' && a.note) { D.memory.push({ recipe: S.recipe.name.replace('엄마표 ', ''), note: a.note }); saveD();
