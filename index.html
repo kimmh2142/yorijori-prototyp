@@ -627,8 +627,29 @@ function findRecipe(n) {
     if (sc > score) { score = sc; best = r; } });
   return best;
 }
+// 입맛 기록: "다음엔 덜 달게 먹어볼까", (완성 후) "좀 달았어" 같은 말을 AI 없이 바로 저장
+const TASTE = { '달': '단맛', '맵': '매운맛', '짜': '짠맛', '싱겁': '간', '기름지': '기름기' };
+function parseTaste(n, after) {
+  let m = n.match(/(좀|조금|약간)?\s*(덜|더)\s*(달|맵|짜|싱겁|기름지)게/);
+  const future = /(다음|먹어\s*볼까|먹을래|해\s*줘|해\s*볼까|기억|할래|원해|좋겠)/.test(n);
+  if (m && (future || after)) return `${m[1] ? m[1] + ' ' : ''}${m[2]} ${m[3]}게`.replace('더 싱겁게', '더 싱겁게');
+  if (!after) return null;
+  m = n.match(/(너무|좀|조금|약간)?\s*(달았|매웠|짰|싱거웠|느끼했)/);
+  if (!m) return null;
+  return { '달았': '덜 달게', '매웠': '덜 맵게', '짰': '덜 짜게', '싱거웠': '간을 조금 더 세게', '느끼했': '기름 덜 쓰게' }[m[2]];
+}
+function rememberTaste(note) {
+  const recipe = S.recipe.name.replace('엄마표 ', '');
+  const key = (note.match(/(달|맵|짜|싱겁|기름|간)/) || [])[1];
+  D.memory = D.memory.filter(m => !(m.recipe === recipe && key && m.note.includes(key)));   // 같은 맛 기록은 최신 것으로 교체
+  D.memory.push({ recipe, note }); saveD();
+  showCard({ label: '입맛 기억 · 연동 앱에 저장', title: `${recipe} · ${note}`, lines: ['다음에 이 레시피를 열면 먼저 반영할게요', '앱 기록 탭에서 수정·삭제할 수 있어요'] }, { ms: 6000 });
+  return speak(`알겠어요. 다음 ${recipe}는 ${note} 안내할게요.`);
+}
 function handleLocal(t) {
   const n = t.replace(/[.,!?~]/g, '').trim();
+  { const done = S.step >= S.recipe.steps.length; const note = parseTaste(n, done);
+    if (note) { rememberTaste(note); return true; } }
   if (/즐겨\s*찾기/.test(n)) {
     const fv = D.recipes.filter(isFav);
     showCard({ label: '연동 앱 · 즐겨찾기', title: '♥ 즐겨찾기 레시피', lines: fv.length ? fv.map(r => r.name) : ['아직 없어요'] }, { ms: 8000 });
@@ -653,7 +674,7 @@ function handleLocal(t) {
   if (/(몇\s*분\s*남|얼마나\s*남)/.test(n)) { const live = S.timers.filter(t => !t.done); speak(live.length ? live.map(t => `${t.label} ${fmtDur(Math.round((t.end - Date.now()) / 1000))}`).join(', ') + ' 남았어요.' : '지금 돌아가는 타이머는 없어요.'); return true; }
   if (/^(요리\s*)?(시작|시작하자|시작해)/.test(n) && S.step < 0) { gotoStep(0); return true; }
   if (checkItem(n)) return true;
-  const short = n.length <= 14 && !NEEDS_IMAGE.test(n) && !/[?？]/.test(t);
+  const short = n.length <= 14 && !NEEDS_IMAGE.test(n) && !/[?？]/.test(t) && !/(짜|달|싱겁|매워|맵|탔|타|졸|넘쳤|눌었|망했|이상)/.test(n);
   if ((short && /(다\s*했어|다음|넘겨|됐어|만들었어|끝났어)$/.test(n)) || /^다음(\s*(단계|거))?$/.test(n)) {
     if (S.step >= S.recipe.steps.length - 1) { speak('마지막 단계예요. 완성되면 “완성”이라고 말해 주세요.'); return true; }
     gotoStep(S.step + 1); return true;
