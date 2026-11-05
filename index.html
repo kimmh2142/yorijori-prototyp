@@ -90,7 +90,7 @@
   #cardLabel { color:var(--mint); font-size:15px; font-weight:700; margin-bottom:6px; }
   #cardTitle { font-size:30px; font-weight:800; line-height:1.25; margin-bottom:8px; }
   #cardLines { font-size:19px; line-height:1.55; color:#E9EEEA; }
-  #cardLines div.done { color:var(--mint); }
+  #cardLines div.done { color:var(--mint); font-weight:600; }
   #cardLines div.next { color:#C8ECDE; margin-top:6px; }
   #cardPin { display:none; color:var(--mint); font-size:13px; margin-top:8px; }
   #card.pinned #cardPin { display:block; }
@@ -482,10 +482,10 @@ function finishCooking() {
 
 // ================= 글라스 HUD 표시 =================
 let cardTimer = null;
-function showCard({ label = '', title = '', lines = [], next = '', done = [] }, { ms = 5000, pin = false } = {}) {
+function showCard({ label = '', title = '', lines = [], next = '', done = [], checklist = false }, { ms = 5000, pin = false } = {}) {
   $('cardLabel').textContent = label; $('cardTitle').textContent = title;
   const box = $('cardLines'); box.innerHTML = '';
-  lines.forEach((l, i) => { const d = document.createElement('div'); d.textContent = (done[i] ? '✓ ' : '') + l; if (done[i]) d.className = 'done'; box.appendChild(d); });
+  lines.forEach((l, i) => { const d = document.createElement('div'); d.textContent = (done[i] ? '✓ ' : checklist ? '○ ' : '') + l; if (done[i]) d.className = 'done'; box.appendChild(d); });
   if (next) { const d = document.createElement('div'); d.className = 'next'; d.textContent = '다음 · ' + next; box.appendChild(d); }
   const c = $('card'); c.classList.toggle('pinned', pin); c.classList.add('show');
   clearTimeout(cardTimer); if (!pin && ms > 0) cardTimer = setTimeout(hideCard, ms);
@@ -507,7 +507,7 @@ function isPinned() { return $('card').classList.contains('pinned') && $('card')
 function stepCard(i, opts) {
   const st = S.recipe.steps[i]; if (!st) return;
   const nx = S.recipe.steps[i + 1]; const done = st.lines.map((_, k) => !!(S.checked[i] && S.checked[i][k]));
-  showCard({ label: `${String(i + 1).padStart(2, '0')} / ${String(S.recipe.steps.length).padStart(2, '0')} · ${S.recipe.name}`, title: st.title, lines: st.lines, next: nx ? nx.title : '', done },
+  showCard({ label: `${String(i + 1).padStart(2, '0')} / ${String(S.recipe.steps.length).padStart(2, '0')} · ${S.recipe.name}`, title: st.title, lines: st.lines, next: nx ? nx.title : '', done, checklist: !!st.pinList },
     opts || { ms: st.safety ? 3500 : 6000, pin: !!st.pinList || !!S.userPinned });
   markOffer();
 }
@@ -682,15 +682,28 @@ document.addEventListener('touchend', e => {
   if (swX === null) return; const t = e.changedTouches[0]; const dx = t.clientX - swX, dy = t.clientY - swY; swX = null;
   if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) { dx < 0 ? nextStep() : prevStep(); }
 }, { passive: true });
+// 양념 목록에서 재료 이름 뽑기: "고추장 3큰술"→고추장, "다진 마늘 1큰술"→다진마늘·마늘, "통깨·후추 약간"→통깨·후추
+function itemKeys(line) {
+  const base = line.replace(/\(.*?\)/g, '').replace(/\s*[\d½⅓¼]+.*$/, '').replace(/\s*(약간|조금|적당히|한\s*줌).*$/, '').trim();
+  const keys = [];
+  base.split(/[·,\/]/).forEach(x => { x = x.trim(); if (!x) return; keys.push(x.replace(/\s/g, '')); const w = x.split(/\s+/); if (w.length > 1) keys.push(w[w.length - 1]); });
+  (S.subs || []).forEach(sb => { if (sb.from && keys.some(k => sb.from.replace(/\s/g, '').includes(k) || k.includes(sb.from.replace(/\s/g, '')))) keys.push(String(sb.to || '').replace(/\s/g, '')); });
+  return keys.filter(k => k.length >= 2);
+}
 function checkItem(n) {
   if (S.step < 0) return false; const st = S.recipe.steps[S.step];
-  if (!/(넣었|넣음|했어|완료|체크)/.test(n)) return false;
-  const k = st.lines.findIndex(l => { const key = l.split(/\s|\(/)[0].replace(/·.*/, ''); return key.length >= 2 && n.includes(key); });
-  if (k < 0) return false;
-  (S.checked[S.step] = S.checked[S.step] || {})[k] = true;
+  const verb = /(넣었|넣음|넣어|했어|완료|체크|됐어|오케이|ok)/i.test(n);
+  // 양념처럼 고정 목록 단계에서는 재료 이름만 말해도 체크 (질문은 제외)
+  if (!verb && !(st.pinList && n.length <= 25 && !/(없|대신|써도|돼\?|되나|어떡|얼마|몇|뭐|\?)/.test(n))) return false;
+  const c = n.replace(/\s/g, '').replace(/고추가루/g, '고춧가루').replace(/매실청/g, '매실액');
+  const hit = [];
+  st.lines.forEach((l, j) => { if (itemKeys(l).some(k => c.includes(k))) hit.push(j); });
+  if (!hit.length) return false;
+  const box = (S.checked[S.step] = S.checked[S.step] || {});
+  hit.forEach(j => box[j] = true);
   stepCard(S.step, { pin: true });
-  const left = st.lines.filter((_, j) => !S.checked[S.step][j]);
-  speak(left.length ? `체크했어요. ${left.length}개 남았어요.` : '양념 다 넣었어요. 다 되면 “다음”이라고 해 주세요.');
+  const left = st.lines.filter((_, j) => !box[j]);
+  speak(left.length ? `체크. ${left.length}개 남았어요.` : '양념 다 넣었어요. 다 되면 “다음”이라고 해 주세요.');
   return true;
 }
 function findRecipe(n) {
