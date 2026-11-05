@@ -454,7 +454,7 @@ async function sendToGlass() {
   S.recipe = clone(r); S.step = -1; S.subs = []; S.checked = {}; S.history = []; S.pendingOffer = null; $('stepChip').classList.remove('show');
   $('sendText').textContent = `“${r.name}”을(를) 글라스로 보내는 중…`; $('sendOverlay').style.display = 'flex';
   try { speechSynthesis && speechSynthesis.getVoices(); } catch (e) {}
-  if (!S.started) { await initMic(); initRec(); await initCamera(); S.started = true; } else applyBg();
+  if (!S.started) { await initMedia(); initRec(); S.started = true; } else applyBg();
   S.listening = true;
   setTimeout(() => {
     $('sendOverlay').style.display = 'none'; $('app').classList.add('hidden');
@@ -561,6 +561,16 @@ async function initMic() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
   try { const a = await navigator.mediaDevices.getUserMedia({ audio: true }); a.getTracks().forEach(t => t.stop()); }
   catch (e) { $('heard').textContent = '마이크 권한이 거부됐어요. 주소창 자물쇠 → 권한 → 마이크를 허용해 주세요.'; }
+}
+// 마이크·카메라 권한을 한 번에 요청(허용 창이 한 번만 뜨도록). 실패하면 따로 시도
+async function initMedia() {
+  if (!window.isSecureContext) { $('heard').textContent = 'HTTPS 주소에서 열어야 마이크·카메라가 켜져요'; return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'environment', width: { ideal: 1280 } } });
+    s.getAudioTracks().forEach(t => { t.stop(); s.removeTrack(t); });
+    S.stream = s; $('bg').srcObject = s; applyBg();
+  } catch (e) { await initMic(); await initCamera(); }
 }
 async function initCamera() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
