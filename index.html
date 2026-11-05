@@ -625,7 +625,9 @@ function updateChip() {
   c.classList.add('show');
 }
 function gotoStep(i, opts) {
-  S.step = Math.max(0, Math.min(i, S.recipe.steps.length - 1)); const st = S.recipe.steps[S.step];
+  const prev = S.step; S.step = Math.max(0, Math.min(i, S.recipe.steps.length - 1)); const st = S.recipe.steps[S.step];
+  // 단계가 바뀌면 이전 단계 타이머는 정리
+  if (prev !== S.step && S.timers.length) { S.timers = []; renderTimers(); }
   S.pendingOffer = st.offer || null; updateChip();
   const pin = !!st.pinList || !!S.userPinned;
   // 음성으로 안내하는 동안 요약 카드를 띄워 두고, 말이 끝나면 몇 초 뒤 작은 단계 표시만 남김
