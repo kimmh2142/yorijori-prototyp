@@ -641,6 +641,15 @@ function renderTimers() {
     d.innerHTML = `<small></small><b>${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}</b>`;
     d.querySelector('small').textContent = t.label + (t.done ? ' · 끝' : ''); box.appendChild(d); });
 }
+// 체크 효과음: 띠링 (다 넣으면 세 음 올라가는 소리)
+let actx = null;
+function ding(all) {
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume();
+    const notes = all ? [1047, 1319, 1568] : [1319, 1760]; const t0 = actx.currentTime;
+    notes.forEach((f, i) => { const o = actx.createOscillator(), g = actx.createGain(); o.type = 'sine'; o.frequency.value = f; o.connect(g); g.connect(actx.destination);
+      const s = t0 + i * 0.09; g.gain.setValueAtTime(0.0001, s); g.gain.exponentialRampToValueAtTime(0.25, s + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, s + 0.45); o.start(s); o.stop(s + 0.5); });
+  } catch (e) {}
+}
 function beep() { try { const a = new (window.AudioContext || window.webkitAudioContext)(); [0, .35, .7].forEach(s => { const o = a.createOscillator(), g = a.createGain(); o.frequency.value = 880; o.connect(g); g.connect(a.destination); g.gain.setValueAtTime(.2, a.currentTime + s); o.start(a.currentTime + s); o.stop(a.currentTime + s + .2); }); } catch (e) {} }
 setInterval(() => {
   S.timers.forEach(t => { if (!t.done && Date.now() >= t.end) { t.done = true; beep();
@@ -723,7 +732,7 @@ function checkItem(n) {
     const hit0 = []; nx.lines.forEach((l, j) => { if (itemKeys(l).some(k => c0.includes(k))) hit0.push(j); });
     if (!hit0.length) return false;
     const box0 = (S.checked[ni] = S.checked[ni] || {}); hit0.forEach(j => box0[j] = true);
-    gotoStep(ni); return true;
+    ding(false); gotoStep(ni); return true;
   }
   const verb = /(넣었|넣음|넣어|했어|완료|체크|됐어|오케이|ok)/i.test(n);
   // 양념처럼 고정 목록 단계에서는 재료 이름만 말해도 체크 (질문은 제외)
@@ -736,7 +745,8 @@ function checkItem(n) {
   hit.forEach(j => box[j] = true);
   stepCard(S.step, { pin: true });
   const left = st.lines.filter((_, j) => !box[j]);
-  speak(left.length ? `체크. ${left.length}개 남았어요.` : '양념 다 넣었어요. 다 되면 “다음”이라고 해 주세요.');
+  // 체크할 때는 말하지 않고 효과음만
+  ding(!left.length); if (!left.length) showSay('양념 완료 · “다음” 하면 넘어가요');
   return true;
 }
 function findRecipe(n) {
