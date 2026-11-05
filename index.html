@@ -163,6 +163,8 @@
   <select id="glassIn"><option value="on">연결됨 · 요리 시작 시 글라스 화면으로</option><option value="off">없음 · 휴대폰에 레시피 표시</option></select>
   <label>글라스 배경</label>
   <select id="bgIn"><option value="black">검정 (영상 합성용)</option><option value="camera">카메라 화면 (글라스 시야처럼)</option></select>
+  <label>단계 카드 표시</label>
+  <select id="stayIn"><option value="keep">다음 단계까지 계속 표시 (“숨겨” 하면 사라짐)</option><option value="brief">말이 끝나고 몇 초 뒤 사라짐</option></select>
   <label>녹화 모드 (아래 버튼 숨김 · 워터마크 표시)</label>
   <select id="recIn"><option value="off">끄기</option><option value="on">켜기</option></select>
   <div class="note">글라스 화면에서 아무 곳이나 1초 길게 누르면 켜고 끌 수 있어요.</div>
@@ -386,7 +388,7 @@ function render() {
     const r = S.recipe, i = Math.max(0, S.step);
     $('appTitle').textContent = r.name;
     const miss = missing(r);
-    B.innerHTML = `<p class="sub">글라스 없이 휴대폰으로 보기 · ${r.steps.length}단계${miss.length ? ' · 없는 재료: ' + esc(miss.join(', ')) : ''}</p>` +
+    B.innerHTML = `<p class="sub">글라스 없이 휴대폰으로 보기 · ${r.steps.length}단계</p>` +
       r.steps.map((s, k) => `<div class="card ${k === i ? 'peach sel' : ''}" data-step="${k}"><h3>${k + 1}. ${esc(s.title)}</h3>${s.lines.map(l => `<p>· ${esc(l)}</p>`).join('')}</div>`).join('') +
       `<div class="row" style="position:sticky;bottom:0;padding-top:8px;background:var(--cream)"><button class="btn ghost" id="prevBtn">이전</button><button class="btn" id="nextBtn">${i >= r.steps.length - 1 ? '완성' : '다음'}</button></div>`;
     B.querySelectorAll('[data-step]').forEach(el => el.onclick = () => { S.step = +el.dataset.step; render(); });
@@ -454,7 +456,6 @@ async function sendToGlass() {
     $('sendOverlay').style.display = 'none'; $('app').classList.add('hidden');
     const miss = missing(r); const mem = memFor(r);
     const lines = [`${r.servings || '1인분'} · ${r.steps.length}단계`];
-    if (miss.length) lines.push(`없는 재료: ${miss.join(', ')}`);
     if (mem.length) lines.push(`지난번 기록: ${mem.map(m => m.note).join(', ')}`);
     lines.push('“시작”이라고 말하면 시작해요');
     showCard({ label: '연동 앱에서 받음', title: r.name, lines }, { ms: 7000 });
@@ -603,8 +604,8 @@ function gotoStep(i, opts) {
   stepCard(S.step, opts || { ms: 0, pin });
   const mySeq = ++S.stepSeq;
   return speak(st.say).then(() => {
-    if (pin || isPinned()) return;
-    setTimeout(() => { if (S.stepSeq === mySeq && !isPinned()) hideCard(); }, st.safety ? 2500 : 5000);
+    if (pin || isPinned() || store.get('cardStay', 'keep') === 'keep') return;
+    setTimeout(() => { if (S.stepSeq === mySeq && !isPinned()) hideCard(); }, st.safety ? 4000 : 8000);
   });
 }
 function checkItem(n) {
@@ -762,9 +763,9 @@ $('camBtn').onclick = async () => {
 $('textIn').addEventListener('keydown', e => { if (e.key === 'Enter') { const v = $('textIn').value.trim(); $('textIn').value = ''; handle(v); } });
 
 // ================= 설정 =================
-function openSettings() { $('recIn').value = document.body.classList.contains('rec') ? 'on' : 'off'; $('glassIn').value = store.get('glass', 'on'); $('keyIn').value = store.get('key', ''); $('modelIn').value = store.get('model', 'gemini-3.1-flash-lite'); $('bgIn').value = store.get('bg', 'black'); $('ttsIn').value = store.get('tts', 'on'); $('settings').style.display = 'block'; }
+function openSettings() { $('stayIn').value = store.get('cardStay', 'keep'); $('recIn').value = document.body.classList.contains('rec') ? 'on' : 'off'; $('glassIn').value = store.get('glass', 'on'); $('keyIn').value = store.get('key', ''); $('modelIn').value = store.get('model', 'gemini-3.1-flash-lite'); $('bgIn').value = store.get('bg', 'black'); $('ttsIn').value = store.get('tts', 'on'); $('settings').style.display = 'block'; }
 $('appSet').onclick = openSettings;
-$('saveBtn').onclick = () => { setRec($('recIn').value === 'on', true); store.set('glass', $('glassIn').value); render(); store.set('key', $('keyIn').value.trim()); store.set('model', $('modelIn').value.trim() || 'gemini-3.1-flash-lite'); store.set('bg', $('bgIn').value); store.set('tts', $('ttsIn').value); applyBg(); $('settings').style.display = 'none'; };
+$('saveBtn').onclick = () => { store.set('cardStay', $('stayIn').value); setRec($('recIn').value === 'on', true); store.set('glass', $('glassIn').value); render(); store.set('key', $('keyIn').value.trim()); store.set('model', $('modelIn').value.trim() || 'gemini-3.1-flash-lite'); store.set('bg', $('bgIn').value); store.set('tts', $('ttsIn').value); applyBg(); $('settings').style.display = 'none'; };
 $('resetBtn').onclick = () => { D.my = []; D.fridge = clone(DEFAULT_FRIDGE); D.history = []; D.memory = []; D.favs = ['jeyuk', 'kimchi']; D.selected = 'jeyuk'; saveD(); cat = null; query = ''; $('settings').style.display = 'none'; tab = 'home'; render(); };
 let dimT = null; function wake() { $('controls').classList.remove('dim'); clearTimeout(dimT); dimT = setTimeout(() => $('controls').classList.add('dim'), 6000); }
 ['touchstart', 'mousemove', 'keydown'].forEach(ev => document.addEventListener(ev, wake, { passive: true })); wake();
