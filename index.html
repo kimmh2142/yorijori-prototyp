@@ -713,8 +713,18 @@ function itemKeys(line) {
   return keys.filter(k => k.length >= 2);
 }
 function checkItem(n) {
-  if (S.step < 0 || S.step >= S.recipe.steps.length) return false; const st = S.recipe.steps[S.step];
-  if (!st.pinList) return false; // 체크는 양념장처럼 목록 고정 단계에서만
+  if (S.step >= S.recipe.steps.length) return false;
+  let st = S.recipe.steps[S.step];
+  // 아직 앞 단계인데 바로 다음 양념 목록의 재료를 말하면 그 단계로 넘어가서 체크
+  if (!st || !st.pinList) {
+    const ni = S.step + 1, nx = S.recipe.steps[ni];
+    if (!nx || !nx.pinList || /[?？]|(없|대신|써도|어떡|얼마|몇|뭐)/.test(n)) return false;
+    const c0 = n.replace(/\s/g, '').replace(/고추가루/g, '고춧가루').replace(/매실청/g, '매실액');
+    const hit0 = []; nx.lines.forEach((l, j) => { if (itemKeys(l).some(k => c0.includes(k))) hit0.push(j); });
+    if (!hit0.length) return false;
+    const box0 = (S.checked[ni] = S.checked[ni] || {}); hit0.forEach(j => box0[j] = true);
+    gotoStep(ni); return true;
+  }
   const verb = /(넣었|넣음|넣어|했어|완료|체크|됐어|오케이|ok)/i.test(n);
   // 양념처럼 고정 목록 단계에서는 재료 이름만 말해도 체크 (질문은 제외)
   if (!verb && !(st.pinList && n.length <= 25 && !/(없|대신|써도|돼\?|되나|어떡|얼마|몇|뭐|\?)/.test(n))) return false;
