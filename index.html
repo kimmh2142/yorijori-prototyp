@@ -713,7 +713,8 @@ function itemKeys(line) {
   return keys.filter(k => k.length >= 2);
 }
 function checkItem(n) {
-  if (S.step < 0) return false; const st = S.recipe.steps[S.step];
+  if (S.step < 0 || S.step >= S.recipe.steps.length) return false; const st = S.recipe.steps[S.step];
+  if (!st.pinList) return false; // 체크는 양념장처럼 목록 고정 단계에서만
   const verb = /(넣었|넣음|넣어|했어|완료|체크|됐어|오케이|ok)/i.test(n);
   // 양념처럼 고정 목록 단계에서는 재료 이름만 말해도 체크 (질문은 제외)
   if (!verb && !(st.pinList && n.length <= 25 && !/(없|대신|써도|돼\?|되나|어떡|얼마|몇|뭐|\?)/.test(n))) return false;
@@ -784,8 +785,8 @@ function handleLocal(t) {
   if (/(몇\s*분\s*남|얼마나\s*남)/.test(n)) { const live = S.timers.filter(t => !t.done); speak(live.length ? live.map(t => `${t.label} ${fmtDur(Math.round((t.end - Date.now()) / 1000))}`).join(', ') + ' 남았어요.' : '지금 돌아가는 타이머는 없어요.'); return true; }
   if (/^(요리\s*)?(시작|시작하자|시작해)/.test(n) && S.step < 0) { gotoStep(0); return true; }
   if (checkItem(n)) return true;
-  const short = n.length <= 14 && !NEEDS_IMAGE.test(n) && !/[?？]/.test(t) && !/(짜|달|싱겁|매워|맵|탔|타|졸|넘쳤|눌었|망했|이상)/.test(n);
-  if ((short && /(다\s*했어|다음|넘겨|됐어|만들었어|끝났어)$/.test(n)) || /^다음(\s*(단계|거))?$/.test(n)) {
+  const short = n.length <= 18 && !NEEDS_IMAGE.test(n) && !/[?？]/.test(t) && !/(짜|달|싱겁|매워|맵|탔|타|졸|넘쳤|눌었|망했|이상)/.test(n);
+  if ((short && /(했|됐|끝났|끝냈|만들었|썰었|다\s*넣었|준비\s*완료|손질\s*완료|다음|넘겨|넘어가|오케이)\s*(어|다|어요|요|습니다|음|지)?$/.test(n)) || /^다음(\s*(단계|거))?$/.test(n)) {
     nextStep(); return true;
   }
   if (/^(이전|뒤로|전\s*단계)/.test(n)) { prevStep(); return true; }
