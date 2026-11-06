@@ -183,7 +183,7 @@
   <select id="ttsIn"><option value="on">켜기</option><option value="off">끄기</option></select>
   <div class="row" style="margin-top:24px"><button class="btn" id="saveBtn">저장하고 닫기</button></div>
   <div class="row" style="margin-top:10px"><button class="btn ghost" id="resetBtn">시연용 초기 상태로 되돌리기</button></div>
-  <div style="margin-top:8px;font-size:12px;color:#8a9;text-align:center" id="verLabel">버전 11/06 17:35</div>
+  <div style="margin-top:8px;font-size:12px;color:#8a9;text-align:center" id="verLabel">버전 11/06 17:40</div>
   <div class="note" style="margin-top:16px">글라스 음성 명령: “다음”, “이전”, “레시피 보여줘”, “양념장 띄워 둬”, “숨겨”, “고추장 넣었어”, “3분 타이머”, “몇 분 남았어?”, “완성”. 그 밖의 말은 AI가 지금 단계를 알고 답하고, “이거”, “이 정도”, “냉장고”가 들어가면 카메라 한 장을 같이 보내요.</div>
 </div>
 
@@ -381,7 +381,7 @@ function render() {
     const vers = D.my.filter(r => r.base), mine = D.recipes.filter(r => r.mine && !r.base), favs = D.recipes.filter(isFav);
     B.innerHTML = `<p class="sub">릴스·유튜브 설명, 글·사진, 엄마 음성 메모를 같은 카드로</p>
       <div class="card"><h3>새 레시피 등록</h3>
-        <div class="row" style="margin:8px 0"><select id="srcIn"><option value="" selected disabled>출처 선택</option><option>엄마 메모</option><option>직접 입력</option><option>릴스·유튜브 설명</option></select>
+        <div class="row" style="margin:8px 0"><select id="srcIn"><option value="" selected disabled>선택</option><option>메모</option><option>영상</option><option>기타</option></select>
         <select id="catIn">${CATS.slice(0, 6).map(c => `<option>${c.key}</option>`).join('')}</select></div>
         <textarea id="recipeIn" placeholder="예) 고기에 고추장 세 숟갈, 간장 대충 한 숟갈 넣고 버무려…"></textarea>
         <div class="row" style="margin-top:8px"><button class="btn ghost" id="mediaBtn">녹음·사진 첨부</button><button class="btn" id="importBtn">AI로 정리</button></div>
@@ -435,8 +435,8 @@ async function importRecipe() {
   $('importMsg').textContent = 'AI가 단계 카드로 정리하는 중…';
   try {
     const src = $('srcIn').value;
-    const r = await makeRecipe((src === '엄마 메모' ? '[엄마가 알려 준 레시피 · 이름 앞에 "엄마표"를 붙여 줘] ' : '') + (text || '첨부한 녹음·사진의 레시피를 정리해 줘.'), mediaData);
-    r.id = 'r' + Date.now(); r.source = $('srcIn').value || '직접 입력'; r.cat = $('catIn').value; r.mine = true; pendingImport = r;
+    const r = await makeRecipe((src === '메모' ? '[메모·음성 메모 레시피 · 엄마처럼 알려 준 사람이 나오면 이름 앞에 "엄마표"처럼 붙여 줘] ' : src === '영상' ? '[요리 영상 설명·자막에서 옮긴 레시피] ' : '') + (text || '첨부한 녹음·사진의 레시피를 정리해 줘.'), mediaData);
+    r.id = 'r' + Date.now(); r.source = $('srcIn').value || '기타'; r.cat = $('catIn').value; r.mine = true; pendingImport = r;
     $('importMsg').textContent = '';
     $('importOut').innerHTML = `<div class="qa"><b>${esc(r.name)}</b> · ${r.steps.length}단계<br>${esc(r.steps.map(s => s.title).join(' → '))}<br>재료: ${esc((r.ingredients || []).join(', '))}</div>` +
       (r.questions && r.questions.length ? `<div class="qa">AI 확인: ${r.questions.map(q => esc(q)).join('<br>')}</div>` : '') +
