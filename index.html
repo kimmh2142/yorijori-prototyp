@@ -53,6 +53,7 @@
   .rc { position:relative; padding-right:48px; }
   .fav { position:absolute; right:10px; top:10px; background:none; border:0; font-size:22px; color:var(--red); }
   .cookbar { position:sticky; bottom:0; background:var(--cream); padding:10px 0 4px; display:flex; gap:10px; align-items:center; border-top:1px solid var(--border); margin-top:12px; }
+  .tweak { margin:6px 0 0; font-size:13px; color:#8a5a44; line-height:1.5; }
   .cookbar { flex-direction:column; gap:8px; }
   .cookbar .sel-name { text-align:center; }
   .cookbar .cb-btns { display:flex; gap:10px; justify-content:center; width:100%; }
@@ -182,7 +183,7 @@
   <select id="ttsIn"><option value="on">켜기</option><option value="off">끄기</option></select>
   <div class="row" style="margin-top:24px"><button class="btn" id="saveBtn">저장하고 닫기</button></div>
   <div class="row" style="margin-top:10px"><button class="btn ghost" id="resetBtn">시연용 초기 상태로 되돌리기</button></div>
-  <div style="margin-top:8px;font-size:12px;color:#8a9;text-align:center" id="verLabel">버전 11/05 22:35</div>
+  <div style="margin-top:8px;font-size:12px;color:#8a9;text-align:center" id="verLabel">버전 11/06 13:40</div>
   <div class="note" style="margin-top:16px">글라스 음성 명령: “다음”, “이전”, “레시피 보여줘”, “양념장 띄워 둬”, “숨겨”, “고추장 넣었어”, “3분 타이머”, “몇 분 남았어?”, “완성”. 그 밖의 말은 AI가 지금 단계를 알고 답하고, “이거”, “이 정도”, “냉장고”가 들어가면 카메라 한 장을 같이 보내요.</div>
 </div>
 
@@ -314,6 +315,7 @@ const SUBSTITUTES = [
 const D = { my: store.get('my', []), fridge: store.get('fridge', DEFAULT_FRIDGE), history: store.get('history', []),
   memory: store.get('memory', []), favs: store.get('favs', ['jeyuk', 'kimchi']), selected: store.get('selected', 'jeyuk') };
 Object.defineProperty(D, 'recipes', { get: () => D.my.concat(BUILTIN) });
+function toast(msg) { const t = document.getElementById('recToast'); t.textContent = msg; t.style.zIndex = 200; t.style.display = 'block'; clearTimeout(t._t); t._t = setTimeout(() => t.style.display = 'none', 2200); }
 function saveD() { ['my', 'fridge', 'history', 'memory', 'favs', 'selected'].forEach(k => store.set(k, D[k])); }
 const S = { speakSeq: 0, userHidden: false, recipe: clone(BUILTIN[0]), step: -1, subs: [], checked: {}, timers: [], pendingOffer: null, history: [],
   listening: false, speaking: false, stream: null, after: null, started: false, stepSeq: 0 };
@@ -322,7 +324,7 @@ const S = { speakSeq: 0, userHidden: false, recipe: clone(BUILTIN[0]), step: -1,
 let tab = 'home', cat = null, query = '', pendingImport = null;
 const has = n => D.fridge.some(f => f.name === n || n.includes(f.name) || f.name.includes(n));
 function missing(r) { return (r.ingredients || []).filter(i => !PANTRY.includes(i) && !has(i)); }
-function memFor(r) { return D.memory.filter(m => r.name.includes(m.recipe) || (m.recipe && m.recipe.includes(r.name.replace('엄마표 ', '')))); }
+function memFor(r) { const nm = tasteName(r); return D.memory.filter(m => m.recipe === nm || r.name.includes(m.recipe) || (m.recipe && m.recipe.includes(nm))); }
 const isFav = r => D.favs.includes(r.id);
 function statusTags(r) {
   const miss = missing(r);
@@ -374,7 +376,7 @@ function render() {
     bindCards(B); $('sendBtn').onclick = startCooking; $('fridgeGoBtn').onclick = startFridge;
   } else if (tab === 'recipes') {
     $('appTitle').textContent = '레시피 보관함';
-    const mine = D.recipes.filter(r => r.mine), favs = D.recipes.filter(isFav);
+    const vers = D.my.filter(r => r.base), mine = D.recipes.filter(r => r.mine && !r.base), favs = D.recipes.filter(isFav);
     B.innerHTML = `<p class="sub">릴스·유튜브 설명, 글·사진, 엄마 음성 메모를 같은 카드로</p>
       <div class="card"><h3>새 레시피 등록</h3>
         <div class="row" style="margin:8px 0"><select id="srcIn"><option>엄마 메모</option><option>직접 입력</option><option>릴스·유튜브 설명</option></select>
@@ -382,6 +384,7 @@ function render() {
         <textarea id="recipeIn" placeholder="예) 엄마: 고기에 고추장 세 숟갈, 간장 대충 한 숟갈 넣고 버무려…"></textarea>
         <div class="row" style="margin-top:8px"><button class="btn ghost" id="mediaBtn">🎙/📷 녹음·사진 첨부</button><button class="btn" id="importBtn">AI로 정리</button></div>
         <div class="note" id="importMsg"></div><div id="importOut"></div></div>
+      ${vers.length ? `<h4 class="sec">✨ 내 버전 · 원본은 그대로</h4>` + vers.map(v => recipeCard(v).replace(/<\/div>\s*$/, '') + `<p class="tweak">원본: ${esc((D.recipes.find(x => x.id === v.base) || {}).name || '')}<br>바뀐 점: ${esc((v.tweaks || []).join(' · '))}</p></div>`).join('') : ''}
       <h4 class="sec">📒 내가 등록한 레시피 (${mine.length})</h4>${mine.map(recipeCard).join('') || '<p class="sub">아직 없어요</p>'}
       <h4 class="sec">♥ 즐겨찾기 (${favs.length})</h4>${favs.map(recipeCard).join('') || '<p class="sub">♡를 눌러 추가해 보세요</p>'}`;
     $('importBtn').onclick = importRecipe;
@@ -411,7 +414,7 @@ function render() {
     $('appTitle').textContent = '조리 기록 · 내 입맛';
     B.innerHTML = `<p class="sub">기억한 입맛은 다음 안내에 반영돼요. 언제든 지울 수 있어요.</p>
       <div class="card peach"><h3>내 입맛</h3>${D.memory.length ? D.memory.map((m, i) => `<p>· ${esc(m.recipe ? m.recipe + ': ' : '')}${esc(m.note)} <b data-mdel="${i}" style="cursor:pointer">×</b></p>`).join('') : '<p>아직 없어요. 요리 후 “다음엔 덜 달게”처럼 말해 보세요.</p>'}</div>` +
-      (D.history.length ? D.history.slice().reverse().map(h => `<div class="card"><h3>${esc(h.name)}</h3><p>${esc(h.date)} · ${h.subs.length ? '대체: ' + esc(h.subs.join(', ')) : '대체 없음'}</p>${h.used.length ? `<p>쓴 재료: ${esc(h.used.join(', '))}</p>` : ''}</div>`).join('') : '<p class="sub">아직 조리 기록이 없어요.</p>');
+      (D.history.length ? D.history.slice().reverse().map(h => `<div class="card"><h3>${esc(h.name)}</h3><p>${esc(h.date)} · ${h.subs.length ? '대체: ' + esc(h.subs.join(', ')) : '대체 없음'}</p>${h.used.length ? `<p>쓴 재료: ${esc(h.used.join(', '))}</p>` : ''}${h.ver ? `<p>✨ 보관함에 “${esc(h.ver)}” 저장</p>` : ''}</div>`).join('') : '<p class="sub">아직 조리 기록이 없어요.</p>');
     B.querySelectorAll('[data-mdel]').forEach(el => el.onclick = () => { D.memory.splice(+el.dataset.mdel, 1); saveD(); render(); });
   }
 }
@@ -429,13 +432,17 @@ async function importRecipe() {
   const text = $('recipeIn').value.trim(); if (!text && !mediaData) { $('importMsg').textContent = '글을 넣거나 녹음·사진을 첨부해 주세요.'; return; }
   $('importMsg').textContent = 'AI가 단계 카드로 정리하는 중…';
   try {
-    const r = await makeRecipe(text || '첨부한 녹음·사진의 레시피를 정리해 줘.', mediaData);
+    const src = $('srcIn').value;
+    const r = await makeRecipe((src === '엄마 메모' ? '[엄마가 알려 준 레시피 · 이름 앞에 "엄마표"를 붙여 줘] ' : '') + (text || '첨부한 녹음·사진의 레시피를 정리해 줘.'), mediaData);
     r.id = 'r' + Date.now(); r.source = $('srcIn').value; r.cat = $('catIn').value; r.mine = true; pendingImport = r;
     $('importMsg').textContent = '';
     $('importOut').innerHTML = `<div class="qa"><b>${esc(r.name)}</b> · ${r.steps.length}단계<br>${esc(r.steps.map(s => s.title).join(' → '))}<br>재료: ${esc((r.ingredients || []).join(', '))}</div>` +
       (r.questions && r.questions.length ? `<div class="qa">AI 확인: ${r.questions.map(q => esc(q)).join('<br>')}</div>` : '') +
       `<div class="row" style="margin-top:8px"><button class="btn" id="keepBtn">이대로 보관함에 저장</button></div>`;
-    $('keepBtn').onclick = () => { D.my.unshift(pendingImport); D.selected = pendingImport.id; D.favs = D.favs.concat(pendingImport.id); saveD(); mediaData = null; pendingImport = null; tab = 'home'; cat = null; render(); };
+    $('keepBtn').onclick = () => {
+      const nk = x => x.replace(/\s|엄마표/g, ''); const same = D.recipes.find(x => !x.base && nk(x.name) === nk(pendingImport.name));
+      if (same) { D.selected = same.id; if (!D.favs.includes(same.id)) D.favs = D.favs.concat(same.id); saveD(); mediaData = null; pendingImport = null; tab = 'home'; cat = null; render(); toast(`“${same.name}” 원본으로 보관했어요`); return; }
+      D.my.unshift(pendingImport); D.selected = pendingImport.id; D.favs = D.favs.concat(pendingImport.id); saveD(); mediaData = null; pendingImport = null; tab = 'home'; cat = null; render(); };
   } catch (e) { $('importMsg').textContent = '실패: ' + e.message; }
 }
 async function scanFridgePhoto() {
@@ -496,11 +503,26 @@ function backToApp(toTab) {
   if (toTab) tab = toTab; $('app').classList.remove('hidden'); render();
 }
 $('backApp').onclick = () => backToApp();
+// 원본은 그대로 두고, 이번에 받아들인 대체·입맛을 "내 버전"으로 따로 저장
+function baseOf(r) { return (r.base && D.recipes.find(x => x.id === r.base)) || r; }
+function tasteName(r) { return r.name.replace(/\s*·\s*내 버전$/, '').replace('엄마표 ', ''); }
+function saveMyVersion() {
+  const cur = S.recipe; if (!cur) return null; const base = baseOf(cur);
+  const notes = D.memory.filter(m => m.recipe === tasteName(base)).map(m => m.note);
+  const subs = S.subs.map(x => `${x.from} → ${x.to} ${x.amount || ''}`.trim());
+  const id = base.id + '-mine'; const old = D.my.find(x => x.id === id);
+  if (!subs.length && !notes.length && !old) return null;
+  const v = clone(cur); v.id = id; v.base = base.id; v.mine = true; v.cat = base.cat; v.name = base.name + ' · 내 버전'; v.source = '내 버전';
+  v.tweaks = Array.from(new Set(((old && old.tweaks) || []).filter(t => !/^입맛:/.test(t)).concat(subs, notes.map(n => '입맛: ' + n))));
+  if (notes.length) { const st = v.steps.find(x => x.pinList) || v.steps[0]; st.lines = st.lines.filter(l => !/^※ 입맛/.test(l)).concat(`※ 입맛: ${notes.join(', ')} — 조금씩 넣고 맛보기`); }
+  D.my = D.my.filter(x => x.id !== id); D.my.unshift(v); if (!D.favs.includes(id)) D.favs = D.favs.concat(id); saveD(); return v;
+}
 function finishCooking() {
   const r = S.recipe;
   const used = (r.ingredients || []).filter(i => !PANTRY.includes(i) && has(i));
   D.fridge = D.fridge.filter(f => !used.some(u => u === f.name || u.includes(f.name) || f.name.includes(u)));
-  D.history.push({ name: r.name, date: new Date().toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }), subs: S.subs.map(s => `${s.from}→${s.to} ${s.amount || ''}`.trim()), used });
+  const ver = saveMyVersion();
+  D.history.push({ ver: ver ? ver.name : '', name: r.name, date: new Date().toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }), subs: S.subs.map(s => `${s.from}→${s.to} ${s.amount || ''}`.trim()), used });
   saveD();
 }
 
@@ -801,11 +823,12 @@ function parseTaste(n, after) {
   return { '달았': '덜 달게', '매웠': '덜 맵게', '짰': '덜 짜게', '싱거웠': '간을 조금 더 세게', '느끼했': '기름 덜 쓰게' }[m[2]];
 }
 function rememberTaste(note) {
-  const recipe = S.recipe.name.replace('엄마표 ', '');
+  const recipe = tasteName(S.recipe);
   const key = (note.match(/(달|맵|짜|싱겁|기름|간)/) || [])[1];
   D.memory = D.memory.filter(m => !(m.recipe === recipe && key && m.note.includes(key)));   // 같은 맛 기록은 최신 것으로 교체
   D.memory.push({ recipe, note }); saveD();
-  showCard({ label: '입맛 기억 · 연동 앱에 저장', title: `${recipe} · ${note}`, lines: ['다음에 이 레시피를 열면 먼저 반영할게요', '앱 기록 탭에서 수정·삭제할 수 있어요'] }, { ms: 6000 });
+  const ver = saveMyVersion();
+  showCard({ label: '입맛 기억 · 연동 앱에 저장', title: `${recipe} · ${note}`, lines: [ver ? `보관함에 “${ver.name}” 저장 · 원본은 그대로` : '다음에 이 레시피를 열면 먼저 반영할게요', '앱 기록 탭에서 수정·삭제할 수 있어요'] }, { ms: 6000 });
   return speak(`알겠어요. 다음 ${recipe}는 ${note} 안내할게요.`);
 }
 function handleLocal(t) {
