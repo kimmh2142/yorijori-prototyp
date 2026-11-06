@@ -13,7 +13,7 @@ const { chromium } = require('playwright');
     await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(out) }] } }] }) });
   });
   await p.goto('file://' + path.resolve(__dirname, '..', 'index.html'));
-  await p.evaluate(() => { localStorage.clear(); localStorage.setItem('yrjr2_key', '"test"'); localStorage.setItem('yrjr2_tts', '"off"'); });
+  await p.evaluate(() => { localStorage.clear(); localStorage.setItem('yrjr2_key', '"test"'); localStorage.setItem('yrjr2_tts', '"off"'); localStorage.setItem('yrjr2_jeyukOn', 'true'); localStorage.setItem('yrjr2_selected', '"jeyuk"'); });
   await p.reload();
   await p.click('#sendBtn'); await p.waitForTimeout(1500);
   const say = async t => { await p.fill('#textIn', t); await p.press('#textIn', 'Enter'); await p.waitForTimeout(t.includes('이거') ? 2000 : 600); };
