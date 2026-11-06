@@ -183,7 +183,7 @@
   <select id="ttsIn"><option value="on">켜기</option><option value="off">끄기</option></select>
   <div class="row" style="margin-top:24px"><button class="btn" id="saveBtn">저장하고 닫기</button></div>
   <div class="row" style="margin-top:10px"><button class="btn ghost" id="resetBtn">시연용 초기 상태로 되돌리기</button></div>
-  <div style="margin-top:8px;font-size:12px;color:#8a9;text-align:center" id="verLabel">버전 11/06 17:40</div>
+  <div style="margin-top:8px;font-size:12px;color:#8a9;text-align:center" id="verLabel">버전 11/06 22:05</div>
   <div class="note" style="margin-top:16px">글라스 음성 명령: “다음”, “이전”, “레시피 보여줘”, “양념장 띄워 둬”, “숨겨”, “고추장 넣었어”, “3분 타이머”, “몇 분 남았어?”, “완성”. 그 밖의 말은 AI가 지금 단계를 알고 답하고, “이거”, “이 정도”, “냉장고”가 들어가면 카메라 한 장을 같이 보내요.</div>
 </div>
 
@@ -874,6 +874,7 @@ function handleLocal(t) {
   }
   if (/^(이전|뒤로|전\s*단계)/.test(n)) { prevStep(); return true; }
   if (/(띄워|고정|붙여)/.test(n)) { S.userPinned = true; S.userHidden = false; if (S.step < 0) S.step = 0; stepCard(S.step, { pin: true }); speak('오른쪽에 띄워 둘게요.'); return true; }
+  if (/배경\s*(바꿔|전환|카메라|검정)|카메라\s*화면\s*(켜|꺼|보여)/.test(n)) { toggleBg(); return true; }
   if (/(숨겨|닫아|치워|내려)/.test(n)) { S.userPinned = false; S.userHidden = true; hideCard(); return true; }
   if (/(레시피\s*보여|다음\s*(뭐|모)|뭐\s*하면\s*돼|지금\s*뭐|다시\s*보여|다시\s*말해)/.test(n) && S.step >= 0) { S.userHidden = false; stepCard(S.step, { ms: keepMode() ? 0 : 6000, pin: isPinned() }); speak(S.recipe.steps[S.step].say); return true; }
   if (/^완성/.test(n)) { hideCard(); S.step = S.recipe.steps.length; updateChip(); finishCooking(); speak('맛있게 드세요! 쓴 재료는 냉장고에서 뺐어요. 맛이 어땠는지 말해 주시면 다음에 반영할게요.'); S.step = S.recipe.steps.length; return true; }
@@ -997,6 +998,18 @@ $('textIn').addEventListener('keydown', e => { if (e.key === 'Enter') { const v 
 function openSettings() { $('stayIn').value = store.get('cardStay', 'keep'); $('recIn').value = document.body.classList.contains('rec') ? 'on' : 'off'; $('glassIn').value = store.get('glass', 'on'); $('keyIn').value = store.get('key', ''); $('modelIn').value = store.get('model', 'gemini-3.1-flash-lite'); $('bgIn').value = store.get('bg', 'black'); $('ttsIn').value = store.get('tts', 'on'); $('settings').style.display = 'block'; }
 $('appSet').onclick = openSettings;
 $('saveBtn').onclick = () => { store.set('cardStay', $('stayIn').value); setRec($('recIn').value === 'on', true); store.set('glass', $('glassIn').value); render(); store.set('key', $('keyIn').value.trim()); store.set('model', $('modelIn').value.trim() || 'gemini-3.1-flash-lite'); store.set('bg', $('bgIn').value); store.set('tts', $('ttsIn').value); if ($('bgIn').value === 'camera') ensureCamera().then(applyBg); else applyBg(); $('settings').style.display = 'none'; };
+// 요리 중에도 배경(검정 ↔ 카메라) 바로 바꾸기: HUD 두 번 탭 또는 "배경 바꿔"
+async function toggleBg() {
+  const next = store.get('bg', 'black') === 'camera' ? 'black' : 'camera'; store.set('bg', next);
+  if (next === 'camera') await ensureCamera(); applyBg();
+  toast(next === 'camera' ? '배경: 카메라 화면 · 두 번 탭하면 검정' : '배경: 검정 · 두 번 탭하면 카메라');
+}
+let lastTap = 0;
+document.addEventListener('touchend', e => {
+  if (!hudActive() || e.target.closest('#controls, #card, #timers, #settings')) { lastTap = 0; return; }
+  const now = Date.now(); if (now - lastTap < 320) { lastTap = 0; toggleBg(); } else lastTap = now;
+}, { passive: true });
+document.addEventListener('dblclick', e => { if (hudActive() && !e.target.closest('#controls, #card, #timers, #settings')) toggleBg(); });
 $('resetBtn').onclick = () => { D.my = []; D.fridge = clone(DEFAULT_FRIDGE); D.history = []; D.memory = []; D.favs = ['kimchi']; D.selected = 'kimchi'; D.jeyukOn = false; saveD(); cat = null; query = ''; $('settings').style.display = 'none'; tab = 'home'; render(); };
 let dimT = null; function wake() { $('controls').classList.remove('dim'); clearTimeout(dimT); dimT = setTimeout(() => $('controls').classList.add('dim'), 6000); }
 ['touchstart', 'mousemove', 'keydown'].forEach(ev => document.addEventListener(ev, wake, { passive: true })); wake();
